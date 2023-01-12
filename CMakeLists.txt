@@ -30,7 +30,11 @@ else()
     )
 endif()
 
-add_executable(llvm_manager_standalone src/standalone.cpp)
+include_directories(include)
 
-target_link_libraries(llvm_manager_standalone ${llvm_libs})
+add_library(irmanager_lib lib/irmanger.cpp)
+target_link_libraries(irmanager_lib ${llvm_libs})
+
+add_executable(irmanager_standalone src/standalone.cpp)
+target_link_libraries(irmanager_standalone irmanager_lib)
 

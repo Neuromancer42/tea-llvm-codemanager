@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.13)
+cmake_minimum_required(VERSION 3.15)
 project(tea_llvm_codemanager)
 
 # Note: match the build environment for LLVM
@@ -8,14 +8,14 @@ set(CMAKE_CXX_EXTENSIONS ON)
 add_compile_options("-fno-rtti")
 add_compile_options("-fno-exceptions")
 
-add_compile_options("-Werror -Wall")
+add_compile_options("-Werror" "-Wall")
 
 find_package(LLVM REQUIRED CONFIG HINTS "${LLVM_DIR}")
 message(STATUS "Found LLVM ${LLVM_PACKAGE_VERSION}")
 message(STATUS "Using LLVMConfig.cmake in ${LLVM_DIR}")
 
-include_directories(${LLVM_INCLUDE_DIR})
-message(STATUS "Include LLVM headers in: ${LLVM_INCLUDE_DIR}")
+include_directories(${LLVM_INCLUDE_DIRS})
+message(STATUS "Include LLVM headers in: ${LLVM_INCLUDE_DIRS}")
 add_definitions(${LLVM_DEFINITIONS})
 message(STATUS "Adding LLVM definitions: ${LLVM_DEFINITIONS}")
 
@@ -38,3 +38,49 @@ target_link_libraries(irmanager_lib ${llvm_libs})
 add_executable(irmanager_standalone src/standalone.cpp)
 target_link_libraries(irmanager_standalone irmanager_lib)
 
+option(BUILD_RPC "build RPC server" ON)
+if(BUILD_RPC)
+    find_package(Protobuf REQUIRED)
+    message(STATUS "Found Protobuf ${Protobuf_VERSION}")
+    find_package(gRPC CONFIG REQUIRED)
+    message(STATUS "Found gRPC ${gRPC_VERSION}")
+    find_program(gRPC_CPP_PLUGIN_EXECUTABLE grpc_cpp_plugin)
+
+    get_filename_component(TEA_SERVICE_PROTO_DIR "../proto" ABSOLUTE)
+    set(TEA_SERVICE_SRC_DIR "${CMAKE_CURRENT_BINARY_DIR}/proto-src")
+    file(MAKE_DIRECTORY ${TEA_SERVICE_SRC_DIR})
+
+    set(TEA_trgt_PROTO "${TEA_SERVICE_PROTO_DIR}/analysis/trgt.proto")
+    set(TEA_analysis_PROTO "${TEA_SERVICE_PROTO_DIR}/analysis/analysis.proto")
+    set(TEA_trgt_SRCS
+            "${TEA_SERVICE_SRC_DIR}/analysis/trgt.pb.cc")
+    set(TEA_trgt_HDRS
+            "${TEA_SERVICE_SRC_DIR}/analysis/trgt.pb.h")
+    add_custom_command(
+            OUTPUT ${TEA_trgt_SRCS} ${TEA_trgt_HDRS}
+            COMMAND ${Protobuf_PROTOC_EXECUTABLE}
+            ARGS --cpp_out "${TEA_SERVICE_SRC_DIR}"
+                -I "${TEA_SERVICE_PROTO_DIR}"
+                "${TEA_trgt_PROTO}"
+            DEPENDS "${TEA_trgt_PROTO}")
+    set(TEA_analysis_SRCS
+            "${TEA_SERVICE_SRC_DIR}/analysis/analysis.pb.cc"
+            "${TEA_SERVICE_SRC_DIR}/analysis/analysis.grpc.pb.cc")
+    set(TEA_SERVICE_HDRS
+            "${TEA_SERVICE_SRC_DIR}/analysis/analysis.pb.h"
+            "${TEA_SERVICE_SRC_DIR}/analysis/analysis.grpc.pb.h")
+    add_custom_command(
+            OUTPUT ${TEA_analysis_SRCS} ${TEA_analysis_HDRS}
+            COMMAND ${Protobuf_PROTOC_EXECUTABLE}
+            ARGS --grpc_out "${TEA_SERVICE_SRC_DIR}"
+                --cpp_out "${TEA_SERVICE_SRC_DIR}"
+                -I "${TEA_SERVICE_PROTO_DIR}"
+                --plugin=protoc-gen-grpc="${gRPC_CPP_PLUGIN_EXECUTABLE}"
+                "${TEA_analysis_PROTO}"
+            DEPENDS "${TEA_analysis_PROTO}")
+
+
+    add_executable(irmanager_server src/rpc_server.cpp ${TEA_analysis_SRCS} ${TEA_trgt_SRCS})
+    target_include_directories(irmanager_server PUBLIC ${TEA_SERVICE_SRC_DIR})
+    target_link_libraries(irmanager_server irmanager_lib gRPC::grpc++_reflection gRPC::grpc++ protobuf::libprotobuf)
+endif()

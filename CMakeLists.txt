@@ -38,7 +38,10 @@ target_link_libraries(irmanager_lib ${llvm_libs})
 add_executable(irmanager_standalone src/standalone.cpp)
 target_link_libraries(irmanager_standalone irmanager_lib)
 
-option(BUILD_RPC "build RPC server" ON)
+add_executable(irmanager_parser parser/main.cpp)
+target_link_libraries(irmanager_parser irmanager_lib)
+
+option(BUILD_RPC "build RPC server" OFF)
 if(BUILD_RPC)
     find_package(Protobuf REQUIRED)
     message(STATUS "Found Protobuf ${Protobuf_VERSION}")

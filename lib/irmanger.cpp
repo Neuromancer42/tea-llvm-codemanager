@@ -8,8 +8,8 @@
 #include <llvm/Support/SourceMgr.h>
 #include <llvm/IRReader/IRReader.h>
 #include <llvm/IR/CFG.h>
+#include <llvm/IR/IRBuilder.h>
 #include <iterator>
-#include "teddy/teddy.hpp"
 
 using namespace tea;
 using namespace std;
@@ -22,11 +22,10 @@ IRManager::IRManager(const string& name, std::unique_ptr<llvm::Module> mod) {
 
 IRManager::IRManager(const string& filename) {
     ctx = make_unique<LLVMContext>();
-    printf("1\n");
     SMDiagnostic diag;
-    printf("2\n");
     mod = parseIRFile(filename, diag, *ctx);
     printf("3\n");
+    /*
     name = string(mod->getName().data());
     name1 = string(mod->getSourceFileName().data());
     name2 = string(mod->getTargetTriple().data());
@@ -42,6 +41,7 @@ IRManager::IRManager(const string& filename) {
     printf("getNumNamedValues():\n%d\n",name5);
     printf("getFunctionList():\n%s\n",name6.c_str());
     printf("4\n");
+    */
     llvm::Module* module = mod.get();   
     for(llvm::Module::iterator MI = module->begin(); MI != module->end(); MI++) {
         llvm::Function &Func = *MI;
@@ -59,6 +59,146 @@ IRManager::IRManager(const string& filename) {
             //cfg_map.insert(make_pair(a,BBB));
             for(llvm::BasicBlock::iterator j = BB.begin(); j != BB.end(); j++) {
                 llvm::Instruction & Inst = *j;
+                int op_num = Inst.getNumOperands();
+                for(int i = 0; i<op_num; i++){
+                    llvm::Value & opi = *Inst.getOperand(i);
+                    std::string opi_name = bb_n + opi.getName().data();
+                    llvm::Type::TypeID opi_alloc_type = opi.getType()->getTypeID();
+                    switch(opi_alloc_type){
+                        case llvm::Type::HalfTyID:
+                        printf("this is halftyid\n");
+                        float_ref.insert(make_pair(opi_name, Inst.getOperand(i)));
+                        break;
+                        case llvm::Type::BFloatTyID:
+                        printf("this is float\n"); 
+                        float_ref.insert(make_pair(opi_name, Inst.getOperand(i)));
+                        break;
+                        case llvm::Type::FloatTyID:
+                        printf("this is float\n"); 
+                        float_ref.insert(make_pair(opi_name, Inst.getOperand(i)));
+                        break;
+                        case llvm::Type::DoubleTyID:
+                        printf("this is float\n"); 
+                        float_ref.insert(make_pair(opi_name, Inst.getOperand(i)));
+                        break;
+                        case llvm::Type::X86_FP80TyID:
+                        printf("this is float\n"); 
+                        float_ref.insert(make_pair(opi_name, Inst.getOperand(i)));
+                        break;
+                        case llvm::Type::FP128TyID:
+                        printf("this is float\n"); 
+                        float_ref.insert(make_pair(opi_name, Inst.getOperand(i)));
+                        break;
+                        case llvm::Type::PPC_FP128TyID:
+                        printf("this is float\n"); 
+                        float_ref.insert(make_pair(opi_name, Inst.getOperand(i)));
+                        break;
+                        case llvm::Type::VoidTyID:
+                        printf("this is void\n"); 
+                        void_ref.insert(make_pair(opi_name, Inst.getOperand(i)));
+                        break;
+                        case llvm::Type::LabelTyID:
+                        printf("this is label\n"); 
+                        label_ref.insert(make_pair(opi_name, Inst.getOperand(i)));
+                        break;
+                        case llvm::Type::MetadataTyID:
+                        printf("this is metadata\n"); 
+                        break;
+                        case llvm::Type::TokenTyID:
+                        printf("this is token\n"); 
+                        break;
+                        case llvm::Type::IntegerTyID:
+                        printf("this is integer\n"); 
+                        int_ref.insert(make_pair(opi_name, Inst.getOperand(i)));
+                        break;
+                        case llvm::Type::PointerTyID:
+                        printf("this is pointer\n"); 
+                        pointer_ref.insert(make_pair(opi_name, Inst.getOperand(i)));
+                        break;
+                        case llvm::Type::StructTyID:
+                        printf("this is struct\n"); 
+                        float_ref.insert(make_pair(opi_name, Inst.getOperand(i)));
+                        break;
+                        case llvm::Type::ArrayTyID:
+                        printf("this is array\n"); 
+                        array_ref.insert(make_pair(opi_name, Inst.getOperand(i)));
+                        break;
+                        case llvm::Type::FixedVectorTyID:
+                        printf("this is fixed vec\n"); 
+                        break;
+                        vector_ref.insert(make_pair(opi_name, Inst.getOperand(i)));
+                        case llvm::Type::ScalableVectorTyID:
+                        printf("this is fixed vec\n"); 
+                        break;
+                        vector_ref.insert(make_pair(opi_name, Inst.getOperand(i)));
+                        default:
+                        printf("something is error\n");
+                        break;
+                    }
+                }
+                /*
+                if(auto * Alloc = dyn_cast<llvm::AllocaInst>(&Inst)){
+                    llvm::AllocaInst & AInst = *Alloc;
+                    string alloc_name = AInst.getName().data();
+                    llvm::Type::TypeID alloc_type = AInst.getAllocatedType()->getTypeID();
+                    printf("alloc_name:%s.\n",alloc_name.c_str());
+                    printf("shit:%d\n",alloc_type);
+                    switch(alloc_type){
+                        case llvm::Type::HalfTyID:
+                        printf("this is halftyid\n");
+                        break;
+                        case llvm::Type::BFloatTyID:
+                        printf("this is float\n"); 
+                        break;
+                        case llvm::Type::FloatTyID:
+                        printf("this is float\n"); 
+                        break;
+                        case llvm::Type::DoubleTyID:
+                        printf("this is float\n"); 
+                        break;
+                        case llvm::Type::X86_FP80TyID:
+                        printf("this is float\n"); 
+                        break;
+                        case llvm::Type::FP128TyID:
+                        printf("this is float\n"); 
+                        break;
+                        case llvm::Type::PPC_FP128TyID:
+                        printf("this is float\n"); 
+                        break;
+                        case llvm::Type::VoidTyID:
+                        printf("this is void\n"); 
+                        break;
+                        case llvm::Type::LabelTyID:
+                        printf("this is label\n"); 
+                        break;
+                        case llvm::Type::MetadataTyID:
+                        printf("this is metadata\n"); 
+                        break;
+                        case llvm::Type::TokenTyID:
+                        printf("this is token\n"); 
+                        break;
+                        case llvm::Type::IntegerTyID:
+                        printf("this is integer\n"); 
+                        break;
+                        case llvm::Type::PointerTyID:
+                        printf("this is pointer\n"); 
+                        break;
+                        case llvm::Type::StructTyID:
+                        printf("this is struct\n"); 
+                        break;
+                        case llvm::Type::ArrayTyID:
+                        printf("this is array\n"); 
+                        break;
+                        case llvm::Type::FixedVectorTyID:
+                        printf("this is fixed vec\n"); 
+                        break;
+                        default:
+                        printf("something is error\n");
+                        break;
+                    }
+                }
+                this method is proved not robust
+                */
                 string inst_n = bb_n + "-" + to_string(inst_cnt);
                 inst_map.insert(make_pair(inst_n,&Inst));
                 inst_cnt++;
@@ -122,51 +262,41 @@ void IRManager::get_cfg_contents() {
                 printf("instruction_next(%s,%s)\n",(ID+to_string(inst_cnt)).c_str(),(ID+to_string(inst_cnt+1)).c_str());
         }
     }
-    teddy::bdd_manager manager(4, 1'000);
 
-    // create diagram for a single variable (indices start at 0):
-    auto x0 = manager.variable(0);
+}
 
-    // we recommend using auto, but if you want you can use an alias:
-    using diagram_t = teddy::bdd_manager::diagram_t;
-    diagram_t x1 = manager.variable(1);
 
-    // operator() serves the same purpose as .variable call
-    // it is useful to create a reference to the manager with name x
-    auto& x = manager;
-    diagram_t x2 = x(2);
-
-    // diagrams for multiple variables can be created at once:
-    std::vector<diagram_t> xs = manager.variables({0, 1, 2, 3, 4});
-
-    // diagram_t is cheap handle type, multiple diagrams can point
-    // to a same node, to test whether they do use .equals:
-    assert(&x1 != &xs[1] && x1.equals(xs[1]));
-
-    using namespace teddy::ops; // (to simplify operator names)
-    // finally, to create a diagram for the function f
-    // we use the apply function:
-    diagram_t f1 = manager.apply<AND>(xs[0], xs[1]);
-    diagram_t f2 = manager.apply<AND>(xs[2], xs[3]);
-    diagram_t f  = manager.apply<OR>(f1, f2);
-
-    // now that we have diagram for the funtion f, we can test its properties
-    // e.g. evaluate it for give variable assignment
-    unsigned int val = manager.evaluate(f, std::array {1, 1, 0, 1});
-    // val will contain either 0 or 1 (1 in this case)
-
-    // we can see how the diagram looks like by printing its dot representation
-    // into a file or console and visualizing it using e.g. graphviz
-    manager.to_dot_graph(std::cout, f); // console
-    std::ofstream ofst("f.dot");
-    manager.to_dot_graph(ofst, f); // file
-
-    // to calculate number of different variable assignments for which the
-    // function evaluates to 1 we can use .satisfy_count:
-    std::size_t sc = manager.satisfy_count(f);
-
-    // we can also enumerate all variable assignments for which the
-    // the function evaluates to 1:
-    std::vector<std::array<unsigned int, 4>> sa
-        = manager.satisfy_all<std::array<unsigned int, 4>>(f);
+void IRManager::get_types(){
+    printf("void_refs: \n********************************\n");
+    for(auto i: void_ref){
+        printf("    void:id:%s\n",i.first.c_str());
+    //TODO: functype
+    printf("void_refs: \n********************************\n");
+    for(auto i: int_ref){
+        printf("    int:id:%s, bit_width:%d\n",i.first.c_str(),i.second->); 
+    }
+    printf("void_refs: \n********************************\n");
+    for(auto i: float_ref){
+        printf("    void:id:%s\n",i.first.c_str());
+    }
+    printf("void_refs: \n********************************\n");
+    for(auto i: pointer_ref){
+        printf("    void:id:%s\n",i.first.c_str());
+    }
+    printf("void_refs: \n********************************\n");
+    for(auto i: vector_ref){
+        printf("    void:id:%s\n",i.first.c_str());
+    }
+    printf("void_refs: \n********************************\n");
+    for(auto i: label_ref){
+        printf("    void:id:%s\n",i.first.c_str());
+    }
+    printf("void_refs: \n********************************\n");
+    for(auto i: array_ref){
+        printf("    void:id:%s\n",i.first.c_str());
+    }
+    printf("void_refs: \n********************************\n");
+    for(auto i: structure_ref){
+        printf("    void:id:%s\n",i.first.c_str());
+    }
 }

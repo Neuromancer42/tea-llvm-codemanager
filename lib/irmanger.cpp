@@ -46,6 +46,7 @@ IRManager::IRManager(const string& filename) {
     for(llvm::Module::iterator MI = module->begin(); MI != module->end(); MI++) {
         llvm::Function &Func = *MI;
         string func_n = Func.getName().data();
+        func_ref.insert(make_pair(func_n, &Func));
         //printf("%s\n",function_name.c_str());
         if(Func.isDeclaration()) {
             continue;
@@ -62,8 +63,10 @@ IRManager::IRManager(const string& filename) {
                 int op_num = Inst.getNumOperands();
                 for(int i = 0; i<op_num; i++){
                     llvm::Value & opi = *Inst.getOperand(i);
+                    //printf("name:%s, ",opi.getValueName()->first().data());
                     std::string opi_name = bb_n + opi.getName().data();
                     llvm::Type::TypeID opi_alloc_type = opi.getType()->getTypeID();
+                    printf("%s, ",opi_name.c_str());
                     switch(opi_alloc_type){
                         case llvm::Type::HalfTyID:
                         printf("this is halftyid\n");
@@ -270,33 +273,285 @@ void IRManager::get_types(){
     printf("void_refs: \n********************************\n");
     for(auto i: void_ref){
         printf("    void:id:%s\n",i.first.c_str());
-    //TODO: functype
-    printf("void_refs: \n********************************\n");
-    for(auto i: int_ref){
-        printf("    int:id:%s, bit_width:%d\n",i.first.c_str(),i.second->); 
     }
-    printf("void_refs: \n********************************\n");
+    printf("func_refs: \n********************************\n");
+    for(auto i: func_ref){
+        //TODO:type switch meixie
+        printf("    int:id:%s, ret_type:%d\n", i.first.c_str(), i.second->getReturnType()->getTypeID()); 
+        printf("    int:id:%s, arg_num:%ld\n", i.first.c_str(), i.second->arg_size()); 
+        printf("    int:id:%s, vararg:%s\n", i.first.c_str(), i.second->isVarArg()? "yes":"no"); 
+        for(long unsigned int var = 0; var < i.second->arg_size() ; var++){
+            printf("    int:id:%s, varnum:%ld, var type:%d\n", i.first.c_str(), var, i.second->getArg(var)->getType()->getTypeID()); 
+            //get arg only supports unsigned int but arg_size() returns unsigned long
+        }
+
+    }
+    printf("int_refs: \n********************************\n");
+    for(auto i: int_ref){
+        printf("    int:id:%s, bit_width:%d\n", i.first.c_str(), i.second->getType()->getIntegerBitWidth()); 
+    }
+    printf("float_refs: \n********************************\n");
     for(auto i: float_ref){
-        printf("    void:id:%s\n",i.first.c_str());
+        printf("    float:id:%s, float point type:",i.first.c_str());
+        switch(i.second->getType()->getTypeID()){
+            case llvm::Type::HalfTyID:
+            printf("half\n");
+            break;
+            case llvm::Type::BFloatTyID:
+            printf("half\n"); 
+            break;
+            case llvm::Type::FloatTyID:
+            printf("float\n"); 
+            break;
+            case llvm::Type::DoubleTyID:
+            printf("double\n"); 
+            break;
+            case llvm::Type::X86_FP80TyID:
+            printf("x86_fp80\n"); 
+            break;
+            case llvm::Type::FP128TyID:
+            printf("fp128\n"); 
+            break;
+            case llvm::Type::PPC_FP128TyID:
+            printf("ppc_fp128\n"); 
+            break;
+            default:
+            break;
+        }
     }
     printf("void_refs: \n********************************\n");
     for(auto i: pointer_ref){
-        printf("    void:id:%s\n",i.first.c_str());
+        printf("    pointer:id:%s, address space: %d\n",i.first.c_str(), i.second->getType()->getPointerAddressSpace());
+        if(i.second->getType()->isOpaquePointerTy()){
+            printf("this pointer is opaque.\n");
+            continue;
+        }
+        switch(i.second->getType()->getNonOpaquePointerElementType()->getTypeID()){
+            case llvm::Type::HalfTyID:
+            printf("    pointer:id:%s, component type:float\n",i.first.c_str()); 
+            break;
+            case llvm::Type::BFloatTyID:
+            printf("    pointer:id:%s, component type:float\n",i.first.c_str()); 
+            break;
+            case llvm::Type::FloatTyID:
+            printf("    pointer:id:%s, component type:float\n",i.first.c_str()); 
+            break;
+            case llvm::Type::DoubleTyID:
+            printf("    pointer:id:%s, component type:float\n",i.first.c_str()); 
+            break;
+            case llvm::Type::X86_FP80TyID:
+            printf("    pointer:id:%s, component type:float\n",i.first.c_str()); 
+            break;
+            case llvm::Type::FP128TyID:
+            printf("    pointer:id:%s, component type:float\n",i.first.c_str()); 
+            break;
+            case llvm::Type::PPC_FP128TyID:
+            printf("    pointer:id:%s, component type:float\n",i.first.c_str()); 
+            break;
+            case llvm::Type::VoidTyID:
+            printf("    pointer:id:%s, component type:void\n",i.first.c_str()); 
+            break;
+            case llvm::Type::LabelTyID:
+            printf("    pointer:id:%s, component type:label\n",i.first.c_str()); 
+            break;
+            case llvm::Type::MetadataTyID:
+            printf("    pointer:id:%s, component type:metadata\n",i.first.c_str()); 
+            break;
+            case llvm::Type::TokenTyID:
+            printf("    pointer:id:%s, component type:token\n",i.first.c_str()); 
+            break;
+            case llvm::Type::IntegerTyID:
+            printf("    pointer:id:%s, component type:integer\n",i.first.c_str()); 
+            break;
+            case llvm::Type::PointerTyID:
+            printf("    pointer:id:%s, component type:pointer\n",i.first.c_str()); 
+            break;
+            case llvm::Type::StructTyID:
+            printf("    pointer:id:%s, component type:struct\n",i.first.c_str()); 
+            break;
+            case llvm::Type::ArrayTyID:
+            printf("    pointer:id:%s, component type:array\n",i.first.c_str()); 
+            break;
+            case llvm::Type::FixedVectorTyID:
+            printf("    pointer:id:%s, component type:vector\n",i.first.c_str()); 
+            break;
+            case llvm::Type::ScalableVectorTyID:
+            printf("    pointer:id:%s, component type:vector\n",i.first.c_str()); 
+            break;
+            default:
+            printf("something is error\n");
+            break;
+        }
     }
-    printf("void_refs: \n********************************\n");
+    printf("vector_refs: \n********************************\n");
     for(auto i: vector_ref){
-        printf("    void:id:%s\n",i.first.c_str());
+        printf("    vector:id:%s\n, vector size:%d",i.first.c_str(), i.second->getType()->getNumContainedTypes());
+        switch(i.second->getType()->getContainedType(0)->getTypeID()){
+            case llvm::Type::HalfTyID:
+            printf("    vector:id:%s, component type:float\n",i.first.c_str()); 
+            break;
+            case llvm::Type::BFloatTyID:
+            printf("    vector:id:%s, component type:float\n",i.first.c_str()); 
+            break;
+            case llvm::Type::FloatTyID:
+            printf("    vector:id:%s, component type:float\n",i.first.c_str()); 
+            break;
+            case llvm::Type::DoubleTyID:
+            printf("    vector:id:%s, component type:float\n",i.first.c_str()); 
+            break;
+            case llvm::Type::X86_FP80TyID:
+            printf("    vector:id:%s, component type:float\n",i.first.c_str()); 
+            break;
+            case llvm::Type::FP128TyID:
+            printf("    vector:id:%s, component type:float\n",i.first.c_str()); 
+            break;
+            case llvm::Type::PPC_FP128TyID:
+            printf("    vector:id:%s, component type:float\n",i.first.c_str()); 
+            break;
+            case llvm::Type::VoidTyID:
+            printf("    vector:id:%s, component type:void\n",i.first.c_str()); 
+            break;
+            case llvm::Type::LabelTyID:
+            printf("    vector:id:%s, component type:label\n",i.first.c_str()); 
+            break;
+            case llvm::Type::MetadataTyID:
+            printf("    vector:id:%s, component type:metadata\n",i.first.c_str()); 
+            break;
+            case llvm::Type::TokenTyID:
+            printf("    vector:id:%s, component type:token\n",i.first.c_str()); 
+            break;
+            case llvm::Type::IntegerTyID:
+            printf("    vector:id:%s, component type:integer\n",i.first.c_str()); 
+            break;
+            case llvm::Type::PointerTyID:
+            printf("    vector:id:%s, component type:pointer\n",i.first.c_str()); 
+            break;
+            case llvm::Type::StructTyID:
+            printf("    vector:id:%s, component type:struct\n",i.first.c_str()); 
+            break;
+            case llvm::Type::ArrayTyID:
+            printf("    vector:id:%s, component type:array\n",i.first.c_str()); 
+            break;
+            case llvm::Type::FixedVectorTyID:
+            printf("    vector:id:%s, component type:vector\n",i.first.c_str()); 
+            break;
+            case llvm::Type::ScalableVectorTyID:
+            printf("    vector:id:%s, component type:vector\n",i.first.c_str()); 
+            break;
+            default:
+            printf("something is error\n");
+            break;
+        }
     }
-    printf("void_refs: \n********************************\n");
+    printf("label_refs: \n********************************\n");
     for(auto i: label_ref){
-        printf("    void:id:%s\n",i.first.c_str());
+        printf("    label:id:%s\n",i.first.c_str());
     }
-    printf("void_refs: \n********************************\n");
+    printf("array_refs: \n********************************\n");
+    printf("array_refs: \n********************************\n");
     for(auto i: array_ref){
-        printf("    void:id:%s\n",i.first.c_str());
+        string type_name;
+        switch(i.second->getType()->getArrayElementType()->getTypeID()){
+            case llvm::Type::HalfTyID:
+            type_name = "halftyid";
+            break;
+            case llvm::Type::BFloatTyID:
+            case llvm::Type::FloatTyID:
+            case llvm::Type::DoubleTyID:
+            case llvm::Type::X86_FP80TyID:
+            case llvm::Type::FP128TyID:
+            case llvm::Type::PPC_FP128TyID:
+            type_name = "float";
+            break;
+            case llvm::Type::VoidTyID:
+            type_name = "void";
+            break;
+            case llvm::Type::LabelTyID:
+            type_name = "label";
+            break;
+            case llvm::Type::MetadataTyID:
+            type_name = "metadata";
+            break;
+            case llvm::Type::TokenTyID:
+            type_name = "token";
+            break;
+            case llvm::Type::IntegerTyID:
+            type_name = "integer";
+            break;
+            case llvm::Type::PointerTyID:
+            type_name = "pointer";
+            break;
+            case llvm::Type::StructTyID:
+            type_name = "struct";
+            break;
+            case llvm::Type::ArrayTyID:
+            type_name = "array";
+            break;
+            case llvm::Type::FixedVectorTyID:
+            case llvm::Type::ScalableVectorTyID:
+            type_name = "fixed_vec";
+            break;
+            default:
+            type_name = "unknown";
+            break;
+            }
+            printf("    array:id:%s, size:%ld, component_type:%s\n",i.first.c_str(), i.second->getType()->getArrayNumElements(), type_name.c_str());
     }
-    printf("void_refs: \n********************************\n");
+    printf("structure_refs: \n********************************\n");
     for(auto i: structure_ref){
-        printf("    void:id:%s\n",i.first.c_str());
+        int field_num = i.second->getType()->getStructNumElements();
+        printf("    structure:id:%s, name:%s, opaque:%s, field_nums:%d\n",
+            i.first.c_str(), 
+            i.second->hasName() ? i.second->getName().data() : "unnamed", 
+            i.second->getType()->isOpaquePointerTy() ? "yes" : "no", 
+            field_num);
+        for(int j = 0; j < field_num; ++j){
+            string type_name;
+            switch(i.second->getType()->getStructElementType(j)->getTypeID()){
+                case llvm::Type::HalfTyID:
+                type_name = "halftyid";
+                break;
+                case llvm::Type::BFloatTyID:
+                case llvm::Type::FloatTyID:
+                case llvm::Type::DoubleTyID:
+                case llvm::Type::X86_FP80TyID:
+                case llvm::Type::FP128TyID:
+                case llvm::Type::PPC_FP128TyID:
+                type_name = "float";
+                break;
+                case llvm::Type::VoidTyID:
+                type_name = "void";
+                break;
+                case llvm::Type::LabelTyID:
+                type_name = "label";
+                break;
+                case llvm::Type::MetadataTyID:
+                type_name = "metadata";
+                break;
+                case llvm::Type::TokenTyID:
+                type_name = "token";
+                break;
+                case llvm::Type::IntegerTyID:
+                type_name = "integer";
+                break;
+                case llvm::Type::PointerTyID:
+                type_name = "pointer";
+                break;
+                case llvm::Type::StructTyID:
+                type_name = "struct";
+                break;
+                case llvm::Type::ArrayTyID:
+                type_name = "array";
+                break;
+                case llvm::Type::FixedVectorTyID:
+                case llvm::Type::ScalableVectorTyID:
+                type_name = "fixed_vec";
+                break;
+                default:
+                type_name = "unknown";
+                break;
+            }
+            printf("        field_%d:%s\n", j, type_name.c_str());
+        }
     }
 }

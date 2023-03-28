@@ -19,5 +19,6 @@ int main(int argc, char** argv) {
     cout << "Parsed module: " << irm->get_name() << endl;
     irm->get_function_names();
     irm->get_cfg_contents();
+    irm->get_types();
     return 0;
 }

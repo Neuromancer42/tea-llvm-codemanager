@@ -20,6 +20,87 @@ IRManager::IRManager(const string& name, std::unique_ptr<llvm::Module> mod) {
     this->mod = move(mod);
 }   
 
+string IRManager::get_value_type(llvm::Type *t){
+    switch(t->getTypeID()){
+        case llvm::Type::HalfTyID:
+        return "float";
+        //printf("    pointer:id:%s, component type:float\n",i.first.c_str()); 
+        break;
+        case llvm::Type::BFloatTyID:
+        return "float";
+        //printf("    pointer:id:%s, component type:float\n",i.first.c_str()); 
+        break;
+        case llvm::Type::FloatTyID:
+        return "float";
+        //printf("    pointer:id:%s, component type:float\n",i.first.c_str()); 
+        break;
+        case llvm::Type::DoubleTyID:
+        return "float";
+        //printf("    pointer:id:%s, component type:float\n",i.first.c_str()); 
+        break;
+        case llvm::Type::X86_FP80TyID:
+        return "float";
+        //printf("    pointer:id:%s, component type:float\n",i.first.c_str()); 
+        break;
+        case llvm::Type::FP128TyID:
+        return "float";
+        //printf("    pointer:id:%s, component type:float\n",i.first.c_str()); 
+        break;
+        case llvm::Type::PPC_FP128TyID:
+        return "float";
+        //printf("    pointer:id:%s, component type:float\n",i.first.c_str()); 
+        break;
+        case llvm::Type::VoidTyID:
+        return "void";
+        //printf("    pointer:id:%s, component type:void\n",i.first.c_str()); 
+        break;
+        case llvm::Type::LabelTyID:
+        return "label";
+        //printf("    pointer:id:%s, component type:label\n",i.first.c_str()); 
+        break;
+        case llvm::Type::FunctionTyID:
+        return "function";
+        break;
+        case llvm::Type::MetadataTyID:
+        return "metadata";
+        //printf("    pointer:id:%s, component type:metadata\n",i.first.c_str()); 
+        break;
+        case llvm::Type::TokenTyID:
+        return "token";
+        //printf("    pointer:id:%s, component type:token\n",i.first.c_str()); 
+        break;
+        case llvm::Type::IntegerTyID:
+        return "integer";
+        //printf("    pointer:id:%s, component type:integer\n",i.first.c_str()); 
+        break;
+        case llvm::Type::PointerTyID:
+        return "pointer";
+        //printf("    pointer:id:%s, component type:pointer\n",i.first.c_str()); 
+        break;
+        case llvm::Type::StructTyID:
+        return "struct";
+        //printf("    pointer:id:%s, component type:struct\n",i.first.c_str()); 
+        break;
+        case llvm::Type::ArrayTyID:
+        return "array";
+        //printf("    pointer:id:%s, component type:array\n",i.first.c_str()); 
+        break;
+        case llvm::Type::FixedVectorTyID:
+        return "vector";
+        //printf("    pointer:id:%s, component type:vector\n",i.first.c_str()); 
+        break;
+        case llvm::Type::ScalableVectorTyID:
+        return "vector";
+        //printf("    pointer:id:%s, component type:vector\n",i.first.c_str()); 
+        break;
+        default:
+        printf("unknown\n");
+        return "unknown";
+        break;
+    }
+    return "";
+}
+
 IRManager::IRManager(const string& filename) {
     ctx = make_unique<LLVMContext>();
     SMDiagnostic diag;
@@ -49,7 +130,15 @@ IRManager::IRManager(const string& filename) {
         func_ref.insert(make_pair(func_n, &Func));
         //printf("%s\n",function_name.c_str());
         if(Func.isDeclaration()) {
-            continue;
+            printf("in decl\n");
+            llvm::GlobalValue *GV = dyn_cast<llvm::GlobalValue>(MI);
+            std::string gv_n = GV->getName().str();
+            printf("global var:%s",gv_n.c_str());
+            global_ref.insert(make_pair(gv_n,GV));
+            //check whether GV is an alises
+            if(auto * GA = dyn_cast<llvm::GlobalAlias>(MI)){
+                alias_ref.insert(make_pair(gv_n, GA));
+            }
         }
 
         for(llvm::Function::iterator FI = Func.begin(); FI != Func.end(); FI++) {
@@ -63,8 +152,8 @@ IRManager::IRManager(const string& filename) {
                 int op_num = Inst.getNumOperands();
                 for(int i = 0; i<op_num; i++){
                     llvm::Value & opi = *Inst.getOperand(i);
-                    //printf("name:%s, ",opi.getValueName()->first().data());
-                    std::string opi_name = bb_n + opi.getName().data();
+                    printf("name:%s, ",opi.getName().str().c_str());
+                    std::string opi_name = bb_n + opi.getNameOrAsOperand().data();
                     llvm::Type::TypeID opi_alloc_type = opi.getType()->getTypeID();
                     printf("%s, ",opi_name.c_str());
                     switch(opi_alloc_type){
@@ -276,12 +365,11 @@ void IRManager::get_types(){
     }
     printf("func_refs: \n********************************\n");
     for(auto i: func_ref){
-        //TODO:type switch meixie
-        printf("    int:id:%s, ret_type:%d\n", i.first.c_str(), i.second->getReturnType()->getTypeID()); 
+        printf("    int:id:%s, ret_type:%s\n", i.first.c_str(), get_value_type((i.second->getReturnType())).c_str()); 
         printf("    int:id:%s, arg_num:%ld\n", i.first.c_str(), i.second->arg_size()); 
         printf("    int:id:%s, vararg:%s\n", i.first.c_str(), i.second->isVarArg()? "yes":"no"); 
         for(long unsigned int var = 0; var < i.second->arg_size() ; var++){
-            printf("    int:id:%s, varnum:%ld, var type:%d\n", i.first.c_str(), var, i.second->getArg(var)->getType()->getTypeID()); 
+            printf("    int:id:%s, varnum:%ld, var type:%s\n", i.first.c_str(), var, get_value_type(i.second->getArg(var)->getType()).c_str()); 
             //get arg only supports unsigned int but arg_size() returns unsigned long
         }
 
@@ -326,176 +414,22 @@ void IRManager::get_types(){
             printf("this pointer is opaque.\n");
             continue;
         }
-        switch(i.second->getType()->getNonOpaquePointerElementType()->getTypeID()){
-            case llvm::Type::HalfTyID:
-            printf("    pointer:id:%s, component type:float\n",i.first.c_str()); 
-            break;
-            case llvm::Type::BFloatTyID:
-            printf("    pointer:id:%s, component type:float\n",i.first.c_str()); 
-            break;
-            case llvm::Type::FloatTyID:
-            printf("    pointer:id:%s, component type:float\n",i.first.c_str()); 
-            break;
-            case llvm::Type::DoubleTyID:
-            printf("    pointer:id:%s, component type:float\n",i.first.c_str()); 
-            break;
-            case llvm::Type::X86_FP80TyID:
-            printf("    pointer:id:%s, component type:float\n",i.first.c_str()); 
-            break;
-            case llvm::Type::FP128TyID:
-            printf("    pointer:id:%s, component type:float\n",i.first.c_str()); 
-            break;
-            case llvm::Type::PPC_FP128TyID:
-            printf("    pointer:id:%s, component type:float\n",i.first.c_str()); 
-            break;
-            case llvm::Type::VoidTyID:
-            printf("    pointer:id:%s, component type:void\n",i.first.c_str()); 
-            break;
-            case llvm::Type::LabelTyID:
-            printf("    pointer:id:%s, component type:label\n",i.first.c_str()); 
-            break;
-            case llvm::Type::MetadataTyID:
-            printf("    pointer:id:%s, component type:metadata\n",i.first.c_str()); 
-            break;
-            case llvm::Type::TokenTyID:
-            printf("    pointer:id:%s, component type:token\n",i.first.c_str()); 
-            break;
-            case llvm::Type::IntegerTyID:
-            printf("    pointer:id:%s, component type:integer\n",i.first.c_str()); 
-            break;
-            case llvm::Type::PointerTyID:
-            printf("    pointer:id:%s, component type:pointer\n",i.first.c_str()); 
-            break;
-            case llvm::Type::StructTyID:
-            printf("    pointer:id:%s, component type:struct\n",i.first.c_str()); 
-            break;
-            case llvm::Type::ArrayTyID:
-            printf("    pointer:id:%s, component type:array\n",i.first.c_str()); 
-            break;
-            case llvm::Type::FixedVectorTyID:
-            printf("    pointer:id:%s, component type:vector\n",i.first.c_str()); 
-            break;
-            case llvm::Type::ScalableVectorTyID:
-            printf("    pointer:id:%s, component type:vector\n",i.first.c_str()); 
-            break;
-            default:
-            printf("something is error\n");
-            break;
-        }
+        printf("    pointer:id:%s, component type:%s\n",i.first.c_str(),get_value_type(i.second->getType()).c_str());
+        
     }
     printf("vector_refs: \n********************************\n");
     for(auto i: vector_ref){
         printf("    vector:id:%s\n, vector size:%d",i.first.c_str(), i.second->getType()->getNumContainedTypes());
-        switch(i.second->getType()->getContainedType(0)->getTypeID()){
-            case llvm::Type::HalfTyID:
-            printf("    vector:id:%s, component type:float\n",i.first.c_str()); 
-            break;
-            case llvm::Type::BFloatTyID:
-            printf("    vector:id:%s, component type:float\n",i.first.c_str()); 
-            break;
-            case llvm::Type::FloatTyID:
-            printf("    vector:id:%s, component type:float\n",i.first.c_str()); 
-            break;
-            case llvm::Type::DoubleTyID:
-            printf("    vector:id:%s, component type:float\n",i.first.c_str()); 
-            break;
-            case llvm::Type::X86_FP80TyID:
-            printf("    vector:id:%s, component type:float\n",i.first.c_str()); 
-            break;
-            case llvm::Type::FP128TyID:
-            printf("    vector:id:%s, component type:float\n",i.first.c_str()); 
-            break;
-            case llvm::Type::PPC_FP128TyID:
-            printf("    vector:id:%s, component type:float\n",i.first.c_str()); 
-            break;
-            case llvm::Type::VoidTyID:
-            printf("    vector:id:%s, component type:void\n",i.first.c_str()); 
-            break;
-            case llvm::Type::LabelTyID:
-            printf("    vector:id:%s, component type:label\n",i.first.c_str()); 
-            break;
-            case llvm::Type::MetadataTyID:
-            printf("    vector:id:%s, component type:metadata\n",i.first.c_str()); 
-            break;
-            case llvm::Type::TokenTyID:
-            printf("    vector:id:%s, component type:token\n",i.first.c_str()); 
-            break;
-            case llvm::Type::IntegerTyID:
-            printf("    vector:id:%s, component type:integer\n",i.first.c_str()); 
-            break;
-            case llvm::Type::PointerTyID:
-            printf("    vector:id:%s, component type:pointer\n",i.first.c_str()); 
-            break;
-            case llvm::Type::StructTyID:
-            printf("    vector:id:%s, component type:struct\n",i.first.c_str()); 
-            break;
-            case llvm::Type::ArrayTyID:
-            printf("    vector:id:%s, component type:array\n",i.first.c_str()); 
-            break;
-            case llvm::Type::FixedVectorTyID:
-            printf("    vector:id:%s, component type:vector\n",i.first.c_str()); 
-            break;
-            case llvm::Type::ScalableVectorTyID:
-            printf("    vector:id:%s, component type:vector\n",i.first.c_str()); 
-            break;
-            default:
-            printf("something is error\n");
-            break;
-        }
+        printf("    vector:id:%s, component type:%s\n",i.first.c_str(), get_value_type(i.second->getType()).c_str()); 
+        
     }
     printf("label_refs: \n********************************\n");
     for(auto i: label_ref){
         printf("    label:id:%s\n",i.first.c_str());
     }
     printf("array_refs: \n********************************\n");
-    printf("array_refs: \n********************************\n");
     for(auto i: array_ref){
-        string type_name;
-        switch(i.second->getType()->getArrayElementType()->getTypeID()){
-            case llvm::Type::HalfTyID:
-            type_name = "halftyid";
-            break;
-            case llvm::Type::BFloatTyID:
-            case llvm::Type::FloatTyID:
-            case llvm::Type::DoubleTyID:
-            case llvm::Type::X86_FP80TyID:
-            case llvm::Type::FP128TyID:
-            case llvm::Type::PPC_FP128TyID:
-            type_name = "float";
-            break;
-            case llvm::Type::VoidTyID:
-            type_name = "void";
-            break;
-            case llvm::Type::LabelTyID:
-            type_name = "label";
-            break;
-            case llvm::Type::MetadataTyID:
-            type_name = "metadata";
-            break;
-            case llvm::Type::TokenTyID:
-            type_name = "token";
-            break;
-            case llvm::Type::IntegerTyID:
-            type_name = "integer";
-            break;
-            case llvm::Type::PointerTyID:
-            type_name = "pointer";
-            break;
-            case llvm::Type::StructTyID:
-            type_name = "struct";
-            break;
-            case llvm::Type::ArrayTyID:
-            type_name = "array";
-            break;
-            case llvm::Type::FixedVectorTyID:
-            case llvm::Type::ScalableVectorTyID:
-            type_name = "fixed_vec";
-            break;
-            default:
-            type_name = "unknown";
-            break;
-            }
-            printf("    array:id:%s, size:%ld, component_type:%s\n",i.first.c_str(), i.second->getType()->getArrayNumElements(), type_name.c_str());
+        printf("    array:id:%s, size:%ld, component_type:%s\n",i.first.c_str(), i.second->getType()->getArrayNumElements(), get_value_type(i.second->getType()->getArrayElementType()).c_str());
     }
     printf("structure_refs: \n********************************\n");
     for(auto i: structure_ref){
@@ -531,6 +465,9 @@ void IRManager::get_types(){
                 case llvm::Type::TokenTyID:
                 type_name = "token";
                 break;
+                case llvm::Type::FunctionTyID:
+                type_name = "function";
+                break;
                 case llvm::Type::IntegerTyID:
                 type_name = "integer";
                 break;
@@ -555,3 +492,78 @@ void IRManager::get_types(){
         }
     }
 }
+
+void IRManager::get_global_var(){
+    printf("global_Vars: \n********************************\n");
+    for(auto I:global_ref){
+        printf("    id:%s, ty:%s\n", I.first.c_str(), get_value_type(I.second->getType()).c_str());
+        printf("    id:%s, name:%s\n", I.first.c_str(), I.first.c_str());
+        //printf("    id:%s, alignment:%d\n", I.first.c_str(), I.second->MaxAlignmentExponent);
+        printf("    id:%s, link type:%d\n", I.first.c_str(), I.second->getLinkage());
+        printf("    id:%s, visibility:%d\n", I.first.c_str(), I.second->getVisibility());
+        printf("    id:%s, initializer:%s\n", I.first.c_str(), I.second->getValueName()->getValue()->getName().str().c_str());
+        printf("    id:%s, section:%s\n", I.first.c_str(), I.second->getSection().str().c_str());
+        printf("    id:%s, threadlocal mode:%d\n", I.first.c_str(), I.second->getThreadLocalMode());
+        printf("    id:%s, constant:%d\n", I.first.c_str(), I.second->isConstantUsed());
+    }
+}
+
+void IRManager::get_aliases(){
+    printf("global_Alises: \n*******************************\n");
+    for(auto I:alias_ref){
+        printf("\tid:%s, ty:%s\n", I.first.c_str(), get_value_type(I.second->getType()).c_str());
+        printf("\tid:%s, name:%s\n", I.first.c_str(), I.second->getName().data());
+        //the two below are enums, maybe these can be more precisely shown by listing their strs
+        printf("\tid:%s, ty:%d\n", I.first.c_str(), I.second->getLinkage());
+        printf("\tid:%s, visibility:%d\n", I.first.c_str(), I.second->getVisibility());
+        printf("\tid:%s, aliasee:%s\n", I.first.c_str(), I.second->getAliasee()->getName().data());
+    }
+}
+
+
+
+void IRManager::get_functions() {
+    printf("functions: \n********************************\n");
+    for(auto I:func_ref){
+        //what is functiontype really mean? if we cast the get function type method, it'll return func type. I don't
+        //know if this is what we want.
+        printf("\tid:%s, ty:%s\n", I.first.c_str(), get_value_type(dyn_cast<Type>(I.second->getFunctionType())).c_str());
+        printf("\tid:%s, name:%s\n", I.first.c_str(), I.second->getName().data());
+        printf("\tid:%s, linkage type:%d\n", I.first.c_str(), I.second->getLinkage());
+        printf("\tid:%s, visibility:%d\n", I.first.c_str(), I.second->getVisibility());
+        //calling convension is unsigned, what does it mean?
+        printf("\tid:%s, calling convension:%d\n", I.first.c_str(), I.second->getCallingConv());
+        //ref to none local global
+        switch(I.second->getUnnamedAddr()){
+            case llvm::GlobalValue::UnnamedAddr::Global:
+            printf("\tid:%s, unnamed addr:global\n", I.first.c_str());
+            break;
+            case llvm::GlobalValue::UnnamedAddr::Local:
+            printf("\tid:%s, unnamed addr:local\n", I.first.c_str());
+            break;
+            case llvm::GlobalValue::UnnamedAddr::None:
+            printf("\tid:%s, unnamed addr:none\n", I.first.c_str());
+            break;
+            default:
+            printf("\tsomething is error.\n");
+        }
+        printf("\tid:%s, alignment:%ld\n", I.first.c_str(), I.second->getAlignment());
+        printf("\tid:%s, gc:%s\n", I.first.c_str(), I.second->hasGC()?I.second->getGC().c_str():"no gc");
+        //what exactly personally function is?
+        printf("\tid:%s, personally function:%s\n", I.first.c_str(), I.second->hasPersonalityFn()?I.second->getPersonalityFn()->getName().data():"no personality fn");
+        //attribute has some questions
+        //printf("\tid:%s, attribute:%s\n", I.first.c_str(), I.second->getFnAttribute());
+        //printf("\tid:%s, return attribute:%s\n", I.first.c_str(), I.second->attri);
+        printf("\tid:%s, custom section:%s\n", I.first.c_str(), I.second->getSection().str().c_str());
+        for(unsigned int i=0;i < I.second->arg_size(); i++){
+            std::string arg_n = I.first + I.second->getArg(i)->getName().data();
+            llvm::Argument * arg = I.second->getArg(i);
+            arg_ref.insert(make_pair(arg_n, arg));
+            printf("\tid:%s, num_arg:%d, arg_id:%s\n", I.first.c_str(), i, arg_n.c_str());
+            //also the attribute
+            printf("\tid:%s, num_arg:%d, arg_id:%s\n", I.first.c_str(), i, arg_n.c_str());
+        }
+        printf("\tid:%s, param nums:%ld\n", I.first.c_str(), I.second->arg_size());
+    }
+}
+

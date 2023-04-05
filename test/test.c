@@ -5,6 +5,8 @@ struct bbbb{
     int a;
     float c;
 };
+int testt = 0;
+int aaaa = 2;
 struct aaaa{
     int a;
     int b;

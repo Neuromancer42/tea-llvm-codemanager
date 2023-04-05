@@ -20,5 +20,7 @@ int main(int argc, char** argv) {
     irm->get_function_names();
     irm->get_cfg_contents();
     irm->get_types();
+    irm->get_global_var();
+    irm->get_functions();
     return 0;
 }

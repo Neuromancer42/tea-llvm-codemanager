@@ -28,6 +28,9 @@ namespace tea {
         std::map<std::string,llvm::Instruction*> inst_map;
         std::map<std::string,int> bb_inum;
         std::unique_ptr<llvm::LLVMContext> ctx;
+        std::map<std::string,llvm::GlobalValue*> global_ref;
+        std::map<std::string,llvm::GlobalAlias*> alias_ref;
+        std::map<std::string,llvm::Argument*> arg_ref;
         std::map<std::string,llvm::Value*> void_ref;
         std::map<std::string,llvm::Function*> func_ref;
         std::map<std::string,llvm::Value*> int_ref;
@@ -47,6 +50,10 @@ namespace tea {
         void get_function_names();
         void get_cfg_contents();
         void get_types();
+        void get_global_var();
+        static std::string get_value_type(llvm::Type* a);
+        void get_aliases();
+        void get_functions();
 
         // TODO: traverse the module, generating doms&rels
     };

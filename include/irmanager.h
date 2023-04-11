@@ -11,6 +11,7 @@
 #include <string>
 #include <utility>
 #include <llvm/IR/CFG.h>
+#include <llvm/IR/Instructions.h>
 
 namespace tea {
     class IRManager {
@@ -52,6 +53,9 @@ namespace tea {
         std::map<std::string,llvm::ExtractElementInst*> ex_ele_inst_ref;
         std::map<std::string,llvm::InsertElementInst*> in_ele_inst_ref;
         std::map<std::string,llvm::ShuffleVectorInst*> shu_vec_inst_ref;
+        //aggregate operation inst
+        std::map<std::string,llvm::ExtractValueInst*> ex_val_inst_ref;
+        std::map<std::string,llvm::InsertValueInst*> in_val_inst_ref;
         //memory operation inst
         std::map<std::string,llvm::AllocaInst*> alloc_inst_ref;
         std::map<std::string,llvm::LoadInst*> load_inst_ref;
@@ -61,7 +65,13 @@ namespace tea {
         std::map<std::string,llvm::AtomicRMWInst*> atom_inst_ref;
         std::map<std::string,llvm::GetElementPtrInst*> get_ele_ptr_inst_ref;
         //conversion operation inst
-        //other operation
+        std::map<std::string,llvm::Instruction*> conversion_inst_ref;
+        //other operation inst
+        std::map<std::string,llvm::ICmpInst*> icmp_inst_ref;
+        std::map<std::string,llvm::FCmpInst*> fcmp_inst_ref;
+        std::map<std::string,llvm::SelectInst*> sel_inst_ref;
+        std::map<std::string,llvm::CallInst*> call_inst_ref;
+        std::map<std::string,llvm::VAArgInst*> va_arg_inst_ref;
 
 
         std::unique_ptr<llvm::Module> mod;
@@ -71,6 +81,7 @@ namespace tea {
         explicit IRManager(const std::string& filename);
 
         static std::string get_value_type(llvm::Type* a);
+        static std::string get_inst_id(llvm::Instruction *i, std::map<std::string, llvm::Instruction*> inst_m);
         std::string get_name();
         void get_function_names();
         void get_cfg_contents();

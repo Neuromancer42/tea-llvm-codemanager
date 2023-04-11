@@ -22,5 +22,8 @@ int main(int argc, char** argv) {
     irm->get_types();
     irm->get_global_var();
     irm->get_functions();
+    irm->parse_insts();
+    irm->get_terminate_insts();
+    irm->get_binary_insts();
     return 0;
 }

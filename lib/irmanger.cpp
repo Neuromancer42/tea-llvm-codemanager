@@ -308,6 +308,16 @@ IRManager::IRManager(const string& filename) {
 }
 
 
+string IRManager::get_inst_id(llvm::Instruction * i, std::map<std::string, llvm::Instruction*> inst_m){
+    for(auto I:inst_m){
+        if(I.second->isSameOperationAs(i)){
+            return I.first;
+        }
+    }
+    return i->getNameOrAsOperand();
+}
+
+
 string IRManager::get_name() {
     return name;
 }
@@ -592,17 +602,194 @@ void IRManager::parse_insts(){
         }
         //memory inst
         else if(auto * Alloc = dyn_cast<llvm::AllocaInst>(Inst.second)){
-
+            alloc_inst_ref.insert(make_pair(Inst.first, Alloc));
         }
         else if(auto * Load = dyn_cast<llvm::LoadInst>(Inst.second)){
-
+            load_inst_ref.insert(make_pair(Inst.first, Load));
+        }
+        else if(auto * Store = dyn_cast<llvm::StoreInst>(Inst.second)){
+            store_inst_ref.insert(make_pair(Inst.first, Store));
+        }
+        else if(auto * Fence = dyn_cast<llvm::FenceInst>(Inst.second)){
+            fence_inst_ref.insert(make_pair(Inst.first, Fence));
+        }
+        else if(auto * Cmpxchg = dyn_cast<llvm::AtomicCmpXchgInst>(Inst.second)){
+            cmpx_inst_ref.insert(make_pair(Inst.first, Cmpxchg));
+        }
+        else if(auto * Atomic = dyn_cast<llvm::AtomicRMWInst>(Inst.second)){
+            atom_inst_ref.insert(make_pair(Inst.first, Atomic));
+        }
+        else if(auto * GetElePtr = dyn_cast<llvm::GetElementPtrInst>(Inst.second)){
+            get_ele_ptr_inst_ref.insert(make_pair(Inst.first, GetElePtr));
         }
         //vector operation inst
-        else if(auto * vec = dyn_cast<llvm::ShuffleVectorInst>(Inst.second)){
+        else if(auto * Shuff = dyn_cast<llvm::ShuffleVectorInst>(Inst.second)){
+            shu_vec_inst_ref.insert(make_pair(Inst.first, Shuff));
+        }
+        else if(auto * Insert = dyn_cast<llvm::InsertElementInst>(Inst.second)){
+            in_ele_inst_ref.insert(make_pair(Inst.first, Insert));
+        }
+        else if(auto * Extract = dyn_cast<llvm::ExtractElementInst>(Inst.second)){
+            ex_ele_inst_ref.insert(make_pair(Inst.first, Extract));
+        }
+        //aggregate operation inst
+        else if(auto * ExtVal = dyn_cast<llvm::ExtractValueInst>(Inst.second)){
+            ex_val_inst_ref.insert(make_pair(Inst.first, ExtVal));
+        }
+        else if(auto * InsVal = dyn_cast<llvm::InsertValueInst>(Inst.second)){
+            in_val_inst_ref.insert(make_pair(Inst.first, InsVal));
+        }
+        //conversion inst
+        else if(0){
 
         }
-        else if(auto * aggregate = dyn_cast<llvm::Agg>(Inst))
+        //other inst
+        else if(auto * Icmp = dyn_cast<llvm::ICmpInst>(Inst.second)){
+            icmp_inst_ref.insert(make_pair(Inst.first, Icmp));
+        }
+        else if(auto * Fcmp = dyn_cast<llvm::FCmpInst>(Inst.second)){
+            fcmp_inst_ref.insert(make_pair(Inst.first, Fcmp));
+        }
+        else if(auto * Select = dyn_cast<llvm::SelectInst>(Inst.second)){
+            sel_inst_ref.insert(make_pair(Inst.first, Select));
+        }
+        else if(auto * Call = dyn_cast<llvm::CallInst>(Inst.second)){
+            call_inst_ref.insert(make_pair(Inst.first, Call));
+        }
+        /*
+        else if(auto * Phi = dyn_cast<llvm::PHINode>(Inst.second)){
+            
+        }
+        */
+        else if(auto * VaArg = dyn_cast<llvm::VAArgInst>(Inst.second)){
+            va_arg_inst_ref.insert(make_pair(Inst.first, VaArg));
+        }
     }
 }
 
+void IRManager::get_terminate_insts(){
+    printf("terminater_insts: \n********************************\n");
+    printf("\treturn_insts: \n\t********************************\n");
+    for(auto I : ret_inst_ref){
+        printf("\t\tid: %s\n", I.first.c_str());
+        if(auto ret = I.second->getReturnValue()){
+            printf("\t\tid: %s, ret: %s\n", I.first.c_str(), get_inst_id(dyn_cast<llvm::Instruction>(ret), inst_map).c_str());
+        }
+        else{
+            printf("\t\tid: %s, ret: null\n", I.first.c_str());
+        }
+    }
+    printf("\tbranch_insts: \n\t********************************\n");
+    for(auto I : br_inst_ref){
+        printf("\t\tid: %s\n", I.first.c_str());
+        if(I.second->isConditional()){
+            llvm::Instruction * Inst = dyn_cast<llvm::Instruction>(I.second->getCondition());
+            llvm::Value * true_flg = I.second->getOperand(1);
+            llvm::Value * false_flg = I.second->getOperand(2);
+            printf("\t\tid: %s, cond_inst: %s\n", I.first.c_str(), Inst->getName().str().c_str());
+            printf("\t\tid: %s, true flag: %s\n", I.first.c_str(), get_inst_id(dyn_cast<llvm::Instruction>(true_flg), inst_map).c_str());
+            printf("\t\tid: %s, false flag: %s\n", I.first.c_str(), get_inst_id(dyn_cast<llvm::Instruction>(false_flg), inst_map).c_str());
+        }
+        else{
+            llvm::Value * dest = dyn_cast<llvm::Value>(I.second->getOperand(0));
+            printf("\t\tid: %s, false flag: %s\n", I.first.c_str(), get_inst_id(dyn_cast<llvm::Instruction>(dest), inst_map).c_str());
+        }
+    }
+    printf("\tswitch_insts: \n\t********************************\n");
+    for(auto I : switch_inst_ref){
+        printf("\t\tid: %s\n", I.first.c_str());
+        llvm::Instruction * Inst = dyn_cast<llvm::Instruction>(I.second->getCondition());
+        printf("\t\tid: %s, condition: %s", I.first.c_str(), Inst->getName().str().c_str());
+        //default jmp label
+        llvm:: Value * label = I.second->getOperand(1);
+        printf("\t\tid: %s, default label:%s", I.first.c_str(), label->getName().str().c_str());
+        printf("\t\tid: %s, num label:%d", I.first.c_str(), I.second->getNumCases());
+        int num_cases = I.second->getNumCases();
+        for(int i = 0 ; i < num_cases ; i++){
+            llvm::Value * caseval_i = I.second->getOperand(2*i+1);
+            llvm::Value * caselabel_i = I.second->getOperand(2*(i+1));
+            printf("\t\t\tid:%s, case: %d, label: %s\n", I.first.c_str(), i, get_inst_id(dyn_cast<llvm::Instruction>(caselabel_i), inst_map).c_str());
+            printf("\t\t\tid:%s, case: %d, value: %s\n", I.first.c_str(), i, caseval_i->getName().str().c_str());
+        }
+    }
+    printf("\ttindirect_branch_insts: \n\t********************************\n");
+    for(auto I : inbr_inst_ref){
+        printf("\t\tid: %s\n", I.first.c_str());
+        printf("\t\tid: %s, addr: %s",I.first.c_str(), I.second->getAddress()->getName().str().c_str());
+        printf("\t\tid: %s, num labels: %d", I.first.c_str(), I.second->getNumDestinations());
+        int label_num = I.second->getNumDestinations();
+        for(int i = 0 ; i < label_num ; i++){
+            llvm::Value * addr_i = I.second->getOperand(i);
+            printf("\t\t\tid: %s, dest: %d, label: %s", I.first.c_str(), i, get_inst_id(dyn_cast<llvm::Instruction>(addr_i), inst_map).c_str());
+        }
+    }
+    printf("\tunreachable_insts: \n\t********************************\n");
+    for(auto I : unre_inst_ref){
+        printf("\t\tid: %s\n",I.first.c_str());
+    }
+}
+
+void IRManager::get_binary_insts(){
+    printf("binary_insts: \n********************************\n");
+    for(auto I : binary_inst_ref){
+        std::string opcode = I.second->getOpcodeName();
+        printf("\t%s_inst_id: %s\n", opcode.c_str(), I.first.c_str());
+        printf("\t%s_inst_id: %s, first_op: %s\n", opcode.c_str(), I.first.c_str(), I.second->getOperand(0)->getNameOrAsOperand().c_str());
+        printf("\t%s_inst_id: %s, second_op: %s\n", opcode.c_str(), I.first.c_str(), I.second->getOperand(1)->getNameOrAsOperand().c_str());
+        /* temply deletedxxxxxxxxxxxxxxxxxx
+        switch(I.second->getOpcodeName()){
+            case llvm::Instruction::Add:
+            opcode = "add";
+            break;
+            case llvm::Instruction::FAdd:
+            opcode = "add";
+            break;
+            case llvm::Instruction::Sub:
+            opcode = "add";
+            break;
+            case llvm::Instruction::FSub:
+            opcode = "add";
+            break;
+            case llvm::Instruction::Mul:
+            opcode = "add";
+            break;
+            case llvm::Instruction::FMul:
+            opcode = "add";
+            break;
+            case llvm::Instruction::UDiv:
+            opcode = "add";
+            break;
+            case llvm::Instruction::SDiv:
+            opcode = "add";
+            break;
+            case llvm::Instruction::FDiv:
+            opcode = "add";
+            break;
+            case llvm::Instruction::URem:
+            opcode = "add";
+            break;
+            case llvm::Instruction::SRem:
+            opcode = "add";
+            break;
+            case llvm::Instruction::FRem:
+            break;
+            case llvm::Instruction::Shl:
+            break;
+            case llvm::Instruction::LShr:
+            break;
+            case llvm::Instruction::AShr:
+            break;
+            case llvm::Instruction::And:
+            break;
+            case llvm::Instruction::Or:
+            break;
+            case llvm::Instruction::Xor:
+            break;
+            default:
+            printf("something is wrong\n");
+            break;
+        }
+        */
+    }
+}
 

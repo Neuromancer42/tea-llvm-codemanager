@@ -40,20 +40,52 @@ namespace tea {
         std::map<std::string,llvm::Value*> label_ref;
         std::map<std::string,llvm::Value*> array_ref;
         std::map<std::string,llvm::Value*> structure_ref;
+        //terminate inst
+        std::map<std::string,llvm::ReturnInst*> ret_inst_ref;
+        std::map<std::string,llvm::BranchInst*> br_inst_ref;
+        std::map<std::string,llvm::SwitchInst*> switch_inst_ref;
+        std::map<std::string,llvm::IndirectBrInst*> inbr_inst_ref;
+        std::map<std::string,llvm::UnreachableInst*> unre_inst_ref;
+        //binary inst
+        std::map<std::string,llvm::Instruction*> binary_inst_ref;
+        //vector operation inst
+        std::map<std::string,llvm::ExtractElementInst*> ex_ele_inst_ref;
+        std::map<std::string,llvm::InsertElementInst*> in_ele_inst_ref;
+        std::map<std::string,llvm::ShuffleVectorInst*> shu_vec_inst_ref;
+        //memory operation inst
+        std::map<std::string,llvm::AllocaInst*> alloc_inst_ref;
+        std::map<std::string,llvm::LoadInst*> load_inst_ref;
+        std::map<std::string,llvm::StoreInst*> store_inst_ref;
+        std::map<std::string,llvm::FenceInst*> fence_inst_ref;
+        std::map<std::string,llvm::AtomicCmpXchgInst*> cmpx_inst_ref;
+        std::map<std::string,llvm::AtomicRMWInst*> atom_inst_ref;
+        std::map<std::string,llvm::GetElementPtrInst*> get_ele_ptr_inst_ref;
+        //conversion operation inst
+        //other operation
+
+
         std::unique_ptr<llvm::Module> mod;
 
     public:
         IRManager(const std::string& name, std::unique_ptr<llvm::Module> mod);
         explicit IRManager(const std::string& filename);
 
+        static std::string get_value_type(llvm::Type* a);
         std::string get_name();
         void get_function_names();
         void get_cfg_contents();
         void get_types();
         void get_global_var();
-        static std::string get_value_type(llvm::Type* a);
         void get_aliases();
         void get_functions();
+        void parse_insts();
+        void get_terminate_insts();
+        void get_binary_insts();
+        void get_vector_insts();
+        void get_aggregate_insts();
+        void get_memory_insts();
+        void get_conversion_insts();
+        void get_other_insts();
 
         // TODO: traverse the module, generating doms&rels
     };

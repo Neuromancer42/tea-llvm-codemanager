@@ -567,3 +567,42 @@ void IRManager::get_functions() {
     }
 }
 
+
+void IRManager::parse_insts(){
+    for(auto Inst:inst_map){
+        //terminate inst
+        if(auto * Ret = dyn_cast<llvm::ReturnInst>(Inst.second)){
+            ret_inst_ref.insert(make_pair(Inst.first, Ret));
+        }
+        else if(auto * Br = dyn_cast<llvm::BranchInst>(Inst.second)){
+            br_inst_ref.insert(make_pair(Inst.first, Br));
+        }
+        else if(auto * Switch = dyn_cast<llvm::SwitchInst>(Inst.second)){
+            switch_inst_ref.insert(make_pair(Inst.first, Switch));
+        }
+        else if(auto * InBr = dyn_cast<llvm::IndirectBrInst>(Inst.second)){
+            inbr_inst_ref.insert(make_pair(Inst.first, InBr));
+        }
+        else if(auto * UnRe = dyn_cast<llvm::UnreachableInst>(Inst.second)){
+            unre_inst_ref.insert(make_pair(Inst.first, UnRe));
+        }
+        //binary inst
+        else if(Inst.second->isBinaryOp()){
+            binary_inst_ref.insert(make_pair(Inst.first, Inst.second));
+        }
+        //memory inst
+        else if(auto * Alloc = dyn_cast<llvm::AllocaInst>(Inst.second)){
+
+        }
+        else if(auto * Load = dyn_cast<llvm::LoadInst>(Inst.second)){
+
+        }
+        //vector operation inst
+        else if(auto * vec = dyn_cast<llvm::ShuffleVectorInst>(Inst.second)){
+
+        }
+        else if(auto * aggregate = dyn_cast<llvm::Agg>(Inst))
+    }
+}
+
+

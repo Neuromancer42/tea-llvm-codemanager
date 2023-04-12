@@ -82,6 +82,7 @@ namespace tea {
 
         static std::string get_value_type(llvm::Type* a);
         static std::string get_inst_id(llvm::Instruction *i, std::map<std::string, llvm::Instruction*> inst_m);
+        static std::string get_ordering_kind(llvm::AtomicOrdering ao);
         std::string get_name();
         void get_function_names();
         void get_cfg_contents();

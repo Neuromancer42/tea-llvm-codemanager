@@ -793,3 +793,166 @@ void IRManager::get_binary_insts(){
     }
 }
 
+void IRManager::get_vector_insts(){
+    printf("vector_insts: \n********************************\n");
+    printf("\textract_element_insts: \n********************************\n");
+    for(auto I : ex_ele_inst_ref){
+        printf("\t\tid: %s\n", I.first.c_str());
+        //whether the vector name should use get name or get name or as operand is doubtful
+        printf("\t\tid: %s, vector: %s\n", I.first.c_str(), I.second->getOperand(0)->getName().str().c_str());
+        printf("\t\tid: %s, index: %s\n", I.first.c_str(), I.second->getOperand(1)->getNameOrAsOperand().c_str());
+    }
+    printf("\tinsert_element_insts: \n********************************\n");
+    for(auto I : ex_ele_inst_ref){
+        printf("\t\tid: %s\n", I.first.c_str());
+        //whether the vector name should use get name or get name or as operand is doubtful
+        printf("\t\tid: %s, vector: %s\n", I.first.c_str(), I.second->getOperand(0)->getName().str().c_str());
+        printf("\t\tid: %s, val: %s\n", I.first.c_str(), I.second->getOperand(1)->getNameOrAsOperand().c_str());
+        printf("\t\tid: %s, index: %s\n", I.first.c_str(), I.second->getOperand(2)->getNameOrAsOperand().c_str());
+    }
+
+    printf("\tshuffle_element_insts: \n********************************\n");
+    for(auto I : ex_ele_inst_ref){
+        printf("\t\tid: %s\n", I.first.c_str());
+        //whether the vector name should use get name or get name or as operand is doubtful
+        printf("\t\tid: %s, vector1: %s\n", I.first.c_str(), I.second->getOperand(0)->getName().str().c_str());
+        printf("\t\tid: %s, vector2: %s\n", I.first.c_str(), I.second->getOperand(1)->getName().str().c_str());
+        printf("\t\tid: %s, index: %s\n", I.first.c_str(), I.second->getOperand(2)->getNameOrAsOperand().c_str());
+    }
+
+}
+
+void IRManager::get_aggregate_insts(){
+    printf("vector_insts: \n********************************\n");
+    printf("\textract_element_insts: \n********************************\n");
+    for(auto I : ex_val_inst_ref){
+        printf("\t\tid: %s\n", I.first.c_str());
+        //whether the vector name should use get name or get name or as operand is doubtful
+        printf("\t\tid: %s, agg: %s\n", I.first.c_str(), I.second->getOperand(0)->getName().str().c_str());
+        printf("\t\tid: %s, num indices: %d\n", I.first.c_str(), I.second->getNumIndices());
+        for(unsigned int i = 0 ; i < I.second->getNumIndices() ; i++){
+            printf("\t\t\tid: %s, indice index: %d, val: %d\n", I.first.c_str(), i, I.second->getIndices()[i]);
+        }
+        
+    }
+    printf("\tinsert_element_insts: \n********************************\n");
+    for(auto I : in_val_inst_ref){
+        printf("\t\tid: %s\n", I.first.c_str());
+        //whether the vector name should use get name or get name or as operand is doubtful
+        printf("\t\tid: %s, agg: %s\n", I.first.c_str(), I.second->getOperand(0)->getName().str().c_str());
+        printf("\t\tid: %s, num indices: %d\n", I.first.c_str(), I.second->getNumIndices());
+        printf("\t\tid: %s, val: %s\n", I.first.c_str(), I.second->getOperand(1)->getNameOrAsOperand().c_str());
+        for(unsigned int i = 0 ; i < I.second->getNumIndices() ; i++){
+            printf("\t\t\tid: %s, indice index: %d, val: %d\n", I.first.c_str(), i, I.second->getIndices()[i]);
+        }
+        
+    }
+}
+
+void IRManager::get_memory_insts(){
+    printf("memory_insts: \n********************************\n");
+    printf("\talloca_insts: \n********************************\n");
+    for(auto I : alloc_inst_ref){
+        printf("\t\tid: %s\n", I.first.c_str());
+        printf("\t\tid: %s, align: %ld\n", I.first.c_str(), I.second->getAlign().value());
+        printf("\t\tid: %s, size: %s\n", I.first.c_str(), I.second->getArraySize()->getNameOrAsOperand().c_str());
+        printf("\t\tid: %s, type: %s\n", I.first.c_str(), get_value_type(I.second->getAllocatedType()).c_str());
+    }
+    printf("\tload_insts: \n********************************\n");
+    for(auto I : load_inst_ref){
+        printf("\t\tid: %s\n", I.first.c_str());
+        printf("\t\tid: %s, align: %ld\n", I.first.c_str(), I.second->getAlign().value());
+        //the output is a enum class, turn into str if needed
+        printf("\t\tid: %s, ordering: %s\n", I.first.c_str(), get_ordering_kind(I.second->getOrdering()).c_str());
+        printf("\t\tid: %s, volatile: %s\n", I.first.c_str(), I.second->isVolatile()?"true":"false");
+        printf("\t\tid: %s, address: %u\n", I.first.c_str(), I.second->getPointerAddressSpace());
+    }
+    printf("\tstore_insts: \n********************************\n");
+    for(auto I : store_inst_ref){
+        printf("\t\tid: %s\n", I.first.c_str());
+        printf("\t\tid: %s, align: %ld\n", I.first.c_str(), I.second->getAlign().value());
+        //the output is a enum class, turn into str if needed
+        printf("\t\tid: %s, ordering: %s\n", I.first.c_str(), get_ordering_kind(I.second->getOrdering()).c_str());
+        printf("\t\tid: %s, volatile: %s\n", I.first.c_str(), I.second->isVolatile()?"true":"false");
+        printf("\t\tid: %s, value: %s\n", I.first.c_str(), I.second->getValueOperand()->getNameOrAsOperand().c_str());
+        printf("\t\tid: %s, address: %u\n", I.first.c_str(), I.second->getPointerAddressSpace());
+    }
+    printf("\tfence_insts: \n********************************\n");
+    for(auto I : fence_inst_ref){
+        printf("\t\tid: %s\n", I.first.c_str());
+        //the output is a enum class, turn into str if needed
+        printf("\t\tid: %s, ordering: %s\n", I.first.c_str(), get_ordering_kind(I.second->getOrdering()).c_str());
+    }
+    printf("\tcmpxarg_insts: \n********************************\n");
+    for(auto I : cmpx_inst_ref){
+        printf("\t\tid: %s\n", I.first.c_str());
+        printf("\t\tid: %s, align: %ld\n", I.first.c_str(), I.second->getAlign().value());
+        //the output is a enum class, turn into str if needed
+        printf("\t\tid: %s, succ ordering: %s\n", I.first.c_str(), get_ordering_kind(I.second->getSuccessOrdering()).c_str());
+        printf("\t\tid: %s, fail ordering: %s\n", I.first.c_str(), get_ordering_kind(I.second->getFailureOrdering()).c_str());
+        printf("\t\tid: %s, volatile: %s\n", I.first.c_str(), I.second->isVolatile()?"true":"false");
+        printf("\t\tid: %s, cmp value: %s\n", I.first.c_str(), I.second->getCompareOperand()->getNameOrAsOperand().c_str());
+        printf("\t\tid: %s, address: %u\n", I.first.c_str(), I.second->getPointerAddressSpace());
+        printf("\t\tid: %s, new value: %s\n", I.first.c_str(), I.second->getNewValOperand()->getNameOrAsOperand().c_str());
+    }
+    printf("\tatomic_insts: \n********************************\n");
+    for(auto I : atom_inst_ref){
+        printf("\t\tid: %s\n", I.first.c_str());
+        //the output is a enum class, turn into str if needed
+        printf("\t\tid: %s, ordering: %s\n", I.first.c_str(), get_ordering_kind(I.second->getOrdering()).c_str());
+        // not sure whether get opcode name will return the correct name
+        printf("\t\tid: %s, operator: %s\n", I.first.c_str(), I.second->getOpcodeName());
+        printf("\t\tid: %s, volatile: %s\n", I.first.c_str(), I.second->isVolatile()?"true":"false");
+        printf("\t\tid: %s, address: %u\n", I.first.c_str(), I.second->getPointerAddressSpace());
+        printf("\t\tid: %s, new value: %s\n", I.first.c_str(), I.second->getValOperand()->getNameOrAsOperand().c_str());
+    }
+    printf("\tatomic_insts: \n********************************\n");
+    for(auto I : get_ele_ptr_inst_ref){
+        printf("\t\tid: %s\n", I.first.c_str());
+        printf("\t\tid: %s, inbound: %s\n", I.first.c_str(), I.second->isInBounds()?"ture":"false");
+        printf("\t\tid: %s, address: %u\n", I.first.c_str(), I.second->getPointerAddressSpace());
+        printf("\t\tid: %s, indice num: %u\n", I.first.c_str(), I.second->getNumIndices());
+        /* how to get the indexed array?
+        for(int i = 0 ; i < I.second->getNumIndices(); i ++){
+            printf("\t\t\tid: %s. indice index: %d, val: %s\n", I.first.c_str(), i, I.second->get)
+        }
+        */
+    }
+}
+
+
+string IRManager::get_ordering_kind(llvm::AtomicOrdering ao){
+    std::string ordering_kind = "";
+    switch(ao){
+        case llvm::AtomicOrdering::Acquire:
+        ordering_kind = "Acquire";
+        break;
+        case llvm::AtomicOrdering::AcquireRelease:
+        ordering_kind = "AcquireRelease";
+        break;
+        /*
+        //last kind has the same value with sequentiallyconsistent
+        case llvm::AtomicOrdering::LAST:
+        ordering_kind = "LAST";
+        break;
+        */
+        case llvm::AtomicOrdering::Monotonic:
+        ordering_kind = "Monotonic";
+        break;
+        case llvm::AtomicOrdering::NotAtomic:
+        ordering_kind = "NotAtomic";
+        break;
+        case llvm::AtomicOrdering::Release:
+        ordering_kind = "Release";
+        break;
+        case llvm::AtomicOrdering::SequentiallyConsistent:
+        ordering_kind = "SequentiallyConsistent";
+        break;
+        case llvm::AtomicOrdering::Unordered:
+        ordering_kind = "Unordered";
+        break;
+        default:
+        printf("something is error\n");
+    }
+    return ordering_kind;
+}

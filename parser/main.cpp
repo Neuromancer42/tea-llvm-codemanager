@@ -28,5 +28,7 @@ int main(int argc, char** argv) {
     irm->get_vector_insts();
     irm->get_aggregate_insts();
     irm->get_memory_insts();
+    irm->get_conversion_insts();
+    irm->get_other_insts();
     return 0;
 }

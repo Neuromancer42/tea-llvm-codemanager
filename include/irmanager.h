@@ -12,6 +12,9 @@
 #include <utility>
 #include <llvm/IR/CFG.h>
 #include <llvm/IR/Instructions.h>
+#include <sstream>
+#include <llvm/Support/Format.h>
+#include <llvm/Support/FormatVariadic.h>
 
 namespace tea {
     class IRManager {
@@ -49,7 +52,6 @@ namespace tea {
         std::map<std::string,llvm::UnreachableInst*> unre_inst_ref;
         //binary inst
         std::map<std::string,llvm::Instruction*> binary_inst_ref;
-        std::map<std::string,llvm::Instruction*> cast_inst_ref;
         //vector operation inst
         std::map<std::string,llvm::ExtractElementInst*> ex_ele_inst_ref;
         std::map<std::string,llvm::InsertElementInst*> in_ele_inst_ref;
@@ -66,13 +68,16 @@ namespace tea {
         std::map<std::string,llvm::AtomicRMWInst*> atom_inst_ref;
         std::map<std::string,llvm::GetElementPtrInst*> get_ele_ptr_inst_ref;
         //conversion operation inst
-        std::map<std::string,llvm::Instruction*> conversion_inst_ref;
+        std::map<std::string,llvm::CastInst*> conversion_inst_ref;
         //other operation inst
         std::map<std::string,llvm::ICmpInst*> icmp_inst_ref;
         std::map<std::string,llvm::FCmpInst*> fcmp_inst_ref;
         std::map<std::string,llvm::SelectInst*> sel_inst_ref;
         std::map<std::string,llvm::CallInst*> call_inst_ref;
+        std::map<std::string,llvm::PHINode*> phi_inst_ref;
         std::map<std::string,llvm::VAArgInst*> va_arg_inst_ref;
+
+        std::map<std::string, int> imm_dom_ref;
 
 
         std::unique_ptr<llvm::Module> mod;
@@ -84,6 +89,7 @@ namespace tea {
         static std::string get_value_type(llvm::Type* a);
         static std::string get_inst_id(llvm::Instruction *i, std::map<std::string, llvm::Instruction*> inst_m);
         static std::string get_ordering_kind(llvm::AtomicOrdering ao);
+        static std::string get_conv_kind(llvm::CallingConv::ID id);
         std::string get_name();
         void get_function_names();
         void get_cfg_contents();

@@ -639,8 +639,8 @@ void IRManager::parse_insts(){
             in_val_inst_ref.insert(make_pair(Inst.first, InsVal));
         }
         //conversion inst
-        else if(I.second->isCast()){
-            cast_inst_ref.insert(make_pair(Inst.first, Inst.second));
+        else if(auto * Cast = dyn_cast<llvm::CastInst>(Inst.second)){
+            conversion_inst_ref.insert(make_pair(Inst.first, Cast));
         }
         //other inst
         else if(auto * Icmp = dyn_cast<llvm::ICmpInst>(Inst.second)){
@@ -655,11 +655,9 @@ void IRManager::parse_insts(){
         else if(auto * Call = dyn_cast<llvm::CallInst>(Inst.second)){
             call_inst_ref.insert(make_pair(Inst.first, Call));
         }
-        /*
         else if(auto * Phi = dyn_cast<llvm::PHINode>(Inst.second)){
-            
+            phi_inst_ref.insert(make_pair(Inst.first, Phi));
         }
-        */
         else if(auto * VaArg = dyn_cast<llvm::VAArgInst>(Inst.second)){
             va_arg_inst_ref.insert(make_pair(Inst.first, VaArg));
         }
@@ -811,7 +809,7 @@ void IRManager::get_vector_insts(){
     }
 
     printf("\tshuffle_element_insts: \n********************************\n");
-    for(auto I : shu_ele_inst_ref){
+    for(auto I : shu_vec_inst_ref){
         printf("\t\tid: %s\n", I.first.c_str());
         //whether the vector name should use get name or get name or as operand is doubtful
         printf("\t\tid: %s, vector1: %s\n", I.first.c_str(), I.second->getOperand(0)->getName().str().c_str());
@@ -920,6 +918,109 @@ void IRManager::get_memory_insts(){
 }
 
 
+
+void IRManager::get_conversion_insts(){
+    printf("conversion_insts: \n********************************\n");
+    for(auto I : conversion_inst_ref){
+        printf("\tid: %s\n", I.first.c_str());
+        string op_type = I.second->getOpcodeName();
+        printf("\t%s_id: %s, value: %s\n", op_type.c_str(), I.first.c_str(), I.second->getOperand(0)->getNameOrAsOperand().c_str());
+        printf("\t%s_id: %s, src type: %s\n", op_type.c_str(), I.first.c_str(), get_value_type(I.second->getSrcTy()).c_str());
+        printf("\t%s_id: %s, value: %s\n", op_type.c_str(), I.first.c_str(), get_value_type(I.second->getDestTy()).c_str());
+    }
+}
+
+
+void IRManager::get_other_insts(){
+    printf("other_insts: \n********************************\n");
+    printf("\ticmp_insts: \n\t********************************\n");
+    for(auto I : icmp_inst_ref){
+        printf("\t\tid: %s\n", I.first.c_str());
+        printf("\t\tid: %s, cond: %s\n", I.first.c_str(), I.second->getOperand(0)->getNameOrAsOperand().c_str());
+        printf("\t\tid: %s, first op: %s\n", I.first.c_str(), I.second->getOperand(2)->getNameOrAsOperand().c_str());
+        printf("\t\tid: %s, second op: %s\n", I.first.c_str(), I.second->getOperand(3)->getNameOrAsOperand().c_str());
+    }
+    printf("\tfcmp_insts: \n\t********************************\n");
+    for(auto I : fcmp_inst_ref){
+        printf("\t\tid: %s\n", I.first.c_str());
+        printf("\t\tid: %s, cond: %s\n", I.first.c_str(), I.second->getOperand(0)->getNameOrAsOperand().c_str());
+        printf("\t\tid: %s, first op: %s\n", I.first.c_str(), I.second->getOperand(2)->getNameOrAsOperand().c_str());
+        printf("\t\tid: %s, second op: %s\n", I.first.c_str(), I.second->getOperand(3)->getNameOrAsOperand().c_str());
+    }
+    printf("\tphi_insts: \n\t********************************\n");
+    for(auto I : phi_inst_ref){
+        printf("\t\tid: %s\n", I.first.c_str());
+        printf("\t\tid: %s, type: %s\n", I.first.c_str(), get_value_type(I.second->getType()).c_str());
+        printf("\t\tid: %s, pairs num: %u\n", I.first.c_str(), I.second->getNumOperands()/2);
+        for(unsigned int i = 0 ; i < I.second->getNumOperands()/2 ; i++){
+            // not sure if correct
+            printf("\t\t\tid: %s, pair num: %d, value: %s\n", I.first.c_str(), i, I.second->getOperand(2*i+1)->getNameOrAsOperand().c_str());
+            printf("\t\t\tid: %s, pair num: %d, label: %s\n", I.first.c_str(), i, I.second->getOperand(2*i+2)->getNameOrAsOperand().c_str());
+        }
+        printf("\t\tid: %s, second op: %s\n", I.first.c_str(), I.second->getOperand(3)->getNameOrAsOperand().c_str());
+    }
+    printf("\tselect_insts: \n\t********************************\n");
+    for(auto I : sel_inst_ref){
+        printf("\t\tid: %s\n", I.first.c_str());
+        printf("\t\tid: %s, cond: %s\n", I.first.c_str(), I.second->getOperand(0)->getNameOrAsOperand().c_str());
+        printf("\t\tid: %s, true value: %s\n", I.first.c_str(), I.second->getTrueValue()->getNameOrAsOperand().c_str());
+        printf("\t\tid: %s, false value: %s\n", I.first.c_str(), I.second->getFalseValue()->getNameOrAsOperand().c_str());
+    }
+    printf("\tva_arg_insts: \n\t********************************\n");
+    for(auto I : va_arg_inst_ref){
+        printf("\t\tid: %s\n", I.first.c_str());
+        printf("\t\tid: %s, type: %s\n", I.first.c_str(), get_value_type(I.second->getType()).c_str());
+        printf("\t\tid: %s, arg list: %s\n", I.first.c_str(), I.second->getPointerOperand()->getNameOrAsOperand().c_str());
+    }
+    printf("\tcall_insts: \n\t********************************\n");
+    for(auto I : call_inst_ref){
+        //string call_func_signature = "";
+        printf("\t\tid: %s\n", I.first.c_str());
+        printf("\t\tid: %s, func name: %s\n", I.first.c_str(), I.second->getCalledFunction()->getNameOrAsOperand().c_str());
+        printf("\t\tid: %s, tail call avalible: %s\n", I.first.c_str(), I.second->isTailCall()?"yes":"no");
+        printf("\t\tid: %s, ret type: %s\n", I.first.c_str(), get_value_type(I.second->getCalledFunction()->getReturnType()).c_str());
+        for(auto J : I.second->getCalledFunction()->getAttributes().getAttributes(llvm::AttributeList::FunctionIndex)){
+            printf("\t\t\tid:%s, fn attributes: %s\n", I.first.c_str(), J.getAsString().c_str());
+        }
+        for(auto J : I.second->getCalledFunction()->getAttributes().getAttributes(llvm::AttributeList::ReturnIndex)){
+            printf("\t\t\tid:%s, ret attributes: %s\n", I.first.c_str(), J.getAsString().c_str());
+            //call_func_signature += get_value_type(I.second->getCalledFunction()->getReturnType());
+        }
+        unsigned int param_num = I.second->arg_size();
+        for(unsigned j = 0 ; j < param_num ; j++){
+            printf("\t\t\tid:%s, param num: %u, param: %s\n", I.first.c_str(), j, I.second->getArgOperand(j)->getNameOrAsOperand().c_str());
+            for(auto J : I.second->getCalledFunction()->getAttributes().getAttributes(j+1)){
+                printf("\t\t\t\tid:%s, param num: %u, param attributes: %s\n", I.first.c_str(), j, J.getAsString().c_str());
+            }
+            /*
+            if(j == 0){
+                call_func_signature += "(";
+            }
+            else{
+                call_func_signature += " ";
+            }
+            call_func_signature += get_value_type(I.second->getArgOperand(j)->getType());
+            if(j == param_num - 1){
+                call_func_signature += ")";
+            }
+            */
+            //string streaming maybe more efficient
+            
+        }
+        std::string func_type = formatv("{0}", * (I.second->getFunctionType()));
+        printf("\t\tid: %s, calling conv: %u\n", I.first.c_str(), I.second->getCallingConv());
+        printf("\t\tid: %s, calling signature: %s\n", I.first.c_str(), func_type.c_str());
+        printf("\t\tid: %s, calling method: %s\n", I.first.c_str(), I.second->isIndirectCall()?"indirect":"direct");
+
+    }
+}
+
+
+string IRManager::get_conv_kind(llvm::CallingConv::ID id){
+    return "";
+}
+
+
 string IRManager::get_ordering_kind(llvm::AtomicOrdering ao){
     std::string ordering_kind = "";
     switch(ao){
@@ -955,3 +1056,6 @@ string IRManager::get_ordering_kind(llvm::AtomicOrdering ao){
     }
     return ordering_kind;
 }
+
+
+

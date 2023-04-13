@@ -49,6 +49,7 @@ namespace tea {
         std::map<std::string,llvm::UnreachableInst*> unre_inst_ref;
         //binary inst
         std::map<std::string,llvm::Instruction*> binary_inst_ref;
+        std::map<std::string,llvm::Instruction*> cast_inst_ref;
         //vector operation inst
         std::map<std::string,llvm::ExtractElementInst*> ex_ele_inst_ref;
         std::map<std::string,llvm::InsertElementInst*> in_ele_inst_ref;

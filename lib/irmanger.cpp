@@ -364,7 +364,6 @@ void IRManager::get_cfg_contents() {
                 printf("instruction_next(%s,%s)\n",(ID+to_string(inst_cnt)).c_str(),(ID+to_string(inst_cnt+1)).c_str());
         }
     }
-
 }
 
 
@@ -640,8 +639,8 @@ void IRManager::parse_insts(){
             in_val_inst_ref.insert(make_pair(Inst.first, InsVal));
         }
         //conversion inst
-        else if(0){
-
+        else if(I.second->isCast()){
+            cast_inst_ref.insert(make_pair(Inst.first, Inst.second));
         }
         //other inst
         else if(auto * Icmp = dyn_cast<llvm::ICmpInst>(Inst.second)){
@@ -803,7 +802,7 @@ void IRManager::get_vector_insts(){
         printf("\t\tid: %s, index: %s\n", I.first.c_str(), I.second->getOperand(1)->getNameOrAsOperand().c_str());
     }
     printf("\tinsert_element_insts: \n********************************\n");
-    for(auto I : ex_ele_inst_ref){
+    for(auto I : in_ele_inst_ref){
         printf("\t\tid: %s\n", I.first.c_str());
         //whether the vector name should use get name or get name or as operand is doubtful
         printf("\t\tid: %s, vector: %s\n", I.first.c_str(), I.second->getOperand(0)->getName().str().c_str());
@@ -812,7 +811,7 @@ void IRManager::get_vector_insts(){
     }
 
     printf("\tshuffle_element_insts: \n********************************\n");
-    for(auto I : ex_ele_inst_ref){
+    for(auto I : shu_ele_inst_ref){
         printf("\t\tid: %s\n", I.first.c_str());
         //whether the vector name should use get name or get name or as operand is doubtful
         printf("\t\tid: %s, vector1: %s\n", I.first.c_str(), I.second->getOperand(0)->getName().str().c_str());
@@ -833,7 +832,6 @@ void IRManager::get_aggregate_insts(){
         for(unsigned int i = 0 ; i < I.second->getNumIndices() ; i++){
             printf("\t\t\tid: %s, indice index: %d, val: %d\n", I.first.c_str(), i, I.second->getIndices()[i]);
         }
-        
     }
     printf("\tinsert_element_insts: \n********************************\n");
     for(auto I : in_val_inst_ref){
@@ -913,6 +911,7 @@ void IRManager::get_memory_insts(){
         printf("\t\tid: %s, address: %u\n", I.first.c_str(), I.second->getPointerAddressSpace());
         printf("\t\tid: %s, indice num: %u\n", I.first.c_str(), I.second->getNumIndices());
         /* how to get the indexed array?
+        // TODO: use iterator
         for(int i = 0 ; i < I.second->getNumIndices(); i ++){
             printf("\t\t\tid: %s. indice index: %d, val: %s\n", I.first.c_str(), i, I.second->get)
         }

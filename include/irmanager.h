@@ -15,6 +15,7 @@
 #include <sstream>
 #include <llvm/Support/Format.h>
 #include <llvm/Support/FormatVariadic.h>
+#include <iomanip>
 
 namespace tea {
     class IRManager {
@@ -80,6 +81,7 @@ namespace tea {
         std::map<std::string, int> imm_dom_ref;
 
 
+
         std::unique_ptr<llvm::Module> mod;
 
     public:
@@ -90,21 +92,24 @@ namespace tea {
         static std::string get_inst_id(llvm::Instruction *i, std::map<std::string, llvm::Instruction*> inst_m);
         static std::string get_ordering_kind(llvm::AtomicOrdering ao);
         static std::string get_conv_kind(llvm::CallingConv::ID id);
+        static std::string get_visibility_string(llvm::GlobalValue::VisibilityTypes gv_ty);
+        static std::string get_linkage_string(llvm::GlobalValue::LinkageTypes gv_ty);
+        static std::string get_mode_string(llvm::GlobalValue::ThreadLocalMode gv_ty);
         std::string get_name();
-        void get_function_names();
-        void get_cfg_contents();
-        void get_types();
-        void get_global_var();
-        void get_aliases();
-        void get_functions();
+        void get_function_names(char * parsed_domain, char * parsed_relation);
+        void get_cfg_contents(char * parsed_domain, char * parsed_relation);
+        void get_types(char * parsed_domain, char * parsed_relation);
+        void get_global_var(char * parsed_domain, char * parsed_relation);
+        void get_aliases(char * parsed_domain, char * parsed_relation);
+        void get_functions(char * parsed_domain, char * parsed_relation);
         void parse_insts();
-        void get_terminate_insts();
-        void get_binary_insts();
-        void get_vector_insts();
-        void get_aggregate_insts();
-        void get_memory_insts();
-        void get_conversion_insts();
-        void get_other_insts();
+        void get_terminate_insts(char * parsed_domain, char * parsed_relation);
+        void get_binary_insts(char * parsed_domain, char * parsed_relation);
+        void get_vector_insts(char * parsed_domain, char * parsed_relation);
+        void get_aggregate_insts(char * parsed_domain, char * parsed_relation);
+        void get_memory_insts(char * parsed_domain, char * parsed_relation);
+        void get_conversion_insts(char * parsed_domain, char * parsed_relation);
+        void get_other_insts(char * parsed_domain, char * parsed_relation);
 
         // TODO: traverse the module, generating doms&rels
     };

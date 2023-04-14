@@ -322,7 +322,7 @@ string IRManager::get_name() {
     return name;
 }
 
-void IRManager::get_function_names() {
+void IRManager::get_function_names(char * parsed_domain, char * parsed_relation) {
     SymbolTableList<llvm::Function>::iterator function_list_begin = mod->getFunctionList().begin();
     SymbolTableList<llvm::Function>::iterator function_list_end = mod->getFunctionList().end();
     for(;function_list_begin != function_list_end; function_list_begin++){
@@ -332,53 +332,75 @@ void IRManager::get_function_names() {
 }
 
 
-void IRManager::get_cfg_contents() {
+void IRManager::get_cfg_contents(char * parsed_domain, char * parsed_relation) {
     for(std::map<string,llvm::BasicBlock*>::iterator i = cfg_map.begin();
         i != cfg_map.end(); i++) {
         printf("Basicblock:%s:\n",i->first.c_str());
+        //sprintf(parsed_domain, "Basicblock:%s:\n",i->first.c_str());
         string Func_ID = i->second->getParent()->getName().data();
         string ID = Func_ID + "-" + i->second->getName().data();
         printf("basicblock_entry(");
+        sprintf(parsed_relation, "%sbasicblock_entry(", parsed_relation);
         //llvm::Instruction & Inst1 = *i->second->begin();
         printf("%s,%s)\n",ID.c_str(),(ID+"-"+to_string(0)).c_str());
+        sprintf(parsed_relation, "%s%s,%s)\n", parsed_relation,ID.c_str(),(ID+"-"+to_string(0)).c_str());
         //Inst1.dump();
         printf("basicblock_exit(");
+        sprintf(parsed_relation, "%sbasicblock_exit(", parsed_relation);
         //llvm::Instruction & Inst2 = *i->second->rbegin();
         printf("%s,%s)\n",ID.c_str(),(ID+"-"+to_string(bb_inum[ID]-1)).c_str());
+        sprintf(parsed_relation, "%s%s,%s)\n", parsed_relation,ID.c_str(),(ID+"-"+to_string(bb_inum[ID]-1)).c_str());
         //Inst2.dump();
         for(std::vector<std::pair<string,string> >::iterator v = cfg.begin() ;
             v != cfg.end(); v++){
             printf("%s,%s\n",v->first.c_str(),v->second.c_str());
+            sprintf(parsed_relation, "%s%s,%s\n", parsed_relation, v->first.c_str(), v->second.c_str());
             if(v->second == ID){
                 printf("\npred_basicblock:(%s,%s)\n",v->second.c_str(),v->first.c_str());
+                //.,
+                sprintf(parsed_relation, "%spred_basicblock:(%s,%s)\n", parsed_relation, v->second.c_str(), v->first.c_str());
             }
         }
         printf("instruction messages: \n");
         int inst_cnt = 0;
         for(llvm::BasicBlock::iterator j = i->second->begin(); j != i->second->end(); j++) {
             //llvm::Instruction & Inst = *j;
-            printf("instruction_basicblock(%s,%s)\n",(ID+to_string(inst_cnt)).c_str(),ID.c_str());
+            printf("instruction_basicblock(%s,%s)\n",(ID+"-"+to_string(inst_cnt)).c_str(),ID.c_str());
+            sprintf(parsed_relation, "%sinstruction_basicblock(%s,%s)\n", parsed_relation, (ID+"-"+to_string(inst_cnt)).c_str(),ID.c_str());
             //Inst.dump();
             inst_cnt++;
-            if(inst_cnt != bb_inum[ID]-1)
-                printf("instruction_next(%s,%s)\n",(ID+to_string(inst_cnt)).c_str(),(ID+to_string(inst_cnt+1)).c_str());
+            if(inst_cnt != bb_inum[ID]-1){
+                printf("instruction_next(%s,%s)\n",(ID+"-"+to_string(inst_cnt)).c_str(),(ID+"-"+to_string(inst_cnt+1)).c_str());
+                sprintf(parsed_relation, "%sinstruction_next(%s,%s)\n", parsed_relation, (ID+"-"+to_string(inst_cnt)).c_str(),(ID+"-"+to_string(inst_cnt+1)).c_str());
+            }
         }
     }
 }
 
 
-void IRManager::get_types(){
+void IRManager::get_types(char * parsed_domain, char * parsed_relation){
     printf("void_refs: \n********************************\n");
     for(auto i: void_ref){
         printf("    void:id:%s\n",i.first.c_str());
+        sprintf(parsed_domain, "%svoid_type(%s)\n", parsed_relation, i.first.c_str());
     }
     printf("func_refs: \n********************************\n");
     for(auto i: func_ref){
-        printf("    int:id:%s, ret_type:%s\n", i.first.c_str(), get_value_type((i.second->getReturnType())).c_str()); 
-        printf("    int:id:%s, arg_num:%ld\n", i.first.c_str(), i.second->arg_size()); 
-        printf("    int:id:%s, vararg:%s\n", i.first.c_str(), i.second->isVarArg()? "yes":"no"); 
+        sprintf(parsed_domain, "%sfn_type(%s)\n", parsed_domain, i.first.c_str());
+        printf("fn_type:(%s)\n", i.first.c_str());
+        printf("    id:%s, ret_type:%s\n", i.first.c_str(), get_value_type((i.second->getReturnType())).c_str()); 
+        printf("    id:%s, arg_num:%ld\n", i.first.c_str(), i.second->arg_size()); 
+        printf("    id:%s, vararg:%s\n", i.first.c_str(), i.second->isVarArg()? "yes":"no"); 
         for(long unsigned int var = 0; var < i.second->arg_size() ; var++){
-            printf("    int:id:%s, varnum:%ld, var type:%s\n", i.first.c_str(), var, get_value_type(i.second->getArg(var)->getType()).c_str()); 
+            printf("    id:%s, varnum:%ld, var type:%s\n", i.first.c_str(), var, get_value_type(i.second->getArg(var)->getType()).c_str()); 
+            //get arg only supports unsigned int but arg_size() returns unsigned long
+        }
+        if(i.second->isVarArg())
+            sprintf(parsed_domain, "%sfn_type_varargs:(%s)\n", parsed_domain, i.first.c_str()); 
+        sprintf(parsed_relation, "%sfn_type_return(%s,%s)\n", parsed_relation, i.first.c_str(), get_value_type((i.second->getReturnType())).c_str()); 
+        sprintf(parsed_relation, "%sfn_type_nparams(%s,%ld)\n", parsed_relation, i.first.c_str(), i.second->arg_size()); 
+        for(long unsigned int var = 0; var < i.second->arg_size() ; var++){
+            sprintf(parsed_relation, "%sfn_type_param(%s,%ld,%s)\n", parsed_relation, i.first.c_str(), var, get_value_type(i.second->getArg(var)->getType()).c_str()); 
             //get arg only supports unsigned int but arg_size() returns unsigned long
         }
 
@@ -386,31 +408,42 @@ void IRManager::get_types(){
     printf("int_refs: \n********************************\n");
     for(auto i: int_ref){
         printf("    int:id:%s, bit_width:%d\n", i.first.c_str(), i.second->getType()->getIntegerBitWidth()); 
+        sprintf(parsed_domain, "%sint_type(%s)\n", parsed_domain, i.first.c_str());
+        sprintf(parsed_relation, "%sint_type_len(%s,%d)\n", parsed_relation, i.first.c_str(), i.second->getType()->getIntegerBitWidth()); 
     }
     printf("float_refs: \n********************************\n");
     for(auto i: float_ref){
         printf("    float:id:%s, float point type:",i.first.c_str());
+        sprintf(parsed_domain, "%sfloat_type(%s)\n", parsed_domain,i.first.c_str());
+        sprintf(parsed_relation, "%sfloat_type_schema(%s,", parsed_relation,i.first.c_str());
         switch(i.second->getType()->getTypeID()){
             case llvm::Type::HalfTyID:
             printf("half\n");
+            sprintf(parsed_relation, "%shalf)\n", parsed_relation);
             break;
             case llvm::Type::BFloatTyID:
             printf("half\n"); 
+            sprintf(parsed_relation, "%shalf)\n", parsed_relation);
             break;
             case llvm::Type::FloatTyID:
             printf("float\n"); 
+            sprintf(parsed_relation, "%sfloat)\n", parsed_relation);
             break;
             case llvm::Type::DoubleTyID:
             printf("double\n"); 
+            sprintf(parsed_relation, "%sdouble)\n", parsed_relation);
             break;
             case llvm::Type::X86_FP80TyID:
             printf("x86_fp80\n"); 
+            sprintf(parsed_relation, "%sx86_fp80)\n", parsed_relation);
             break;
             case llvm::Type::FP128TyID:
             printf("fp128\n"); 
+            sprintf(parsed_relation, "%sfp128)\n", parsed_relation);
             break;
             case llvm::Type::PPC_FP128TyID:
             printf("ppc_fp128\n"); 
+            sprintf(parsed_relation, "%sppc_fp128)\n", parsed_relation);
             break;
             default:
             break;
@@ -419,6 +452,8 @@ void IRManager::get_types(){
     printf("void_refs: \n********************************\n");
     for(auto i: pointer_ref){
         printf("    pointer:id:%s, address space: %d\n",i.first.c_str(), i.second->getType()->getPointerAddressSpace());
+        sprintf(parsed_domain, "%spointer_type(%s)\n", parsed_domain, i.first.c_str());
+        sprintf(parsed_relation, "%spointer_type_addr_space(%s,%d)\n", parsed_relation, i.first.c_str(), i.second->getType()->getPointerAddressSpace());
         if(i.second->getType()->isOpaquePointerTy()){
             printf("this pointer is opaque.\n");
             continue;
@@ -428,17 +463,25 @@ void IRManager::get_types(){
     }
     printf("vector_refs: \n********************************\n");
     for(auto i: vector_ref){
-        printf("    vector:id:%s\n, vector size:%d",i.first.c_str(), i.second->getType()->getNumContainedTypes());
+        sprintf(parsed_domain, "%svector_type(%s)\n", parsed_domain, i.first.c_str());
+        printf("    vector:id:%s, vector size:%d",i.first.c_str(), i.second->getType()->getNumContainedTypes());
         printf("    vector:id:%s, component type:%s\n",i.first.c_str(), get_value_type(i.second->getType()).c_str()); 
+        sprintf(parsed_relation, "%svector_type_size(%s,%d)\n", parsed_relation, i.first.c_str(), i.second->getType()->getNumContainedTypes());
+        sprintf(parsed_relation, "%svector_type_component(%s,%s)\n", parsed_relation, i.first.c_str(), get_value_type(i.second->getType()).c_str()); 
         
     }
     printf("label_refs: \n********************************\n");
     for(auto i: label_ref){
         printf("    label:id:%s\n",i.first.c_str());
+        sprintf(parsed_domain, "%slabel_type(%s)\n", parsed_domain, i.first.c_str());
     }
     printf("array_refs: \n********************************\n");
     for(auto i: array_ref){
         printf("    array:id:%s, size:%ld, component_type:%s\n",i.first.c_str(), i.second->getType()->getArrayNumElements(), get_value_type(i.second->getType()->getArrayElementType()).c_str());
+        sprintf(parsed_domain, "%sarray_type(%s)\n", parsed_domain, i.first.c_str());
+        sprintf(parsed_relation, "%sarray_type_size(%s,%ld)\n", parsed_relation, i.first.c_str(), i.second->getType()->getArrayNumElements());
+        sprintf(parsed_relation, "%sarray_type_component(%s,%s)\n", parsed_relation, i.first.c_str(), get_value_type(i.second->getType()->getArrayElementType()).c_str());
+
     }
     printf("structure_refs: \n********************************\n");
     for(auto i: structure_ref){
@@ -448,6 +491,13 @@ void IRManager::get_types(){
             i.second->hasName() ? i.second->getName().data() : "unnamed", 
             i.second->getType()->isOpaquePointerTy() ? "yes" : "no", 
             field_num);
+        sprintf(parsed_domain, "%sstruct_type(%s)\n", parsed_domain, i.first.c_str());
+        if(i.second->hasName())
+            sprintf(parsed_relation, "%sstruct_type_name(%s,%s)\n", parsed_relation, i.first.c_str(), i.second->getName().data());
+        if(i.second->getType()->isOpaquePointerTy())
+            sprintf(parsed_relation, "%sopaque_pointer_type(%s)\n", parsed_relation, i.first.c_str());
+        sprintf(parsed_relation, "%sstruct_type_nfields(%s,%d)\n", parsed_relation, i.first.c_str(), i.second->getType()->getStructNumElements());
+
         for(int j = 0; j < field_num; ++j){
             string type_name;
             switch(i.second->getType()->getStructElementType(j)->getTypeID()){
@@ -498,13 +548,14 @@ void IRManager::get_types(){
                 break;
             }
             printf("        field_%d:%s\n", j, type_name.c_str());
+            sprintf(parsed_relation, "%sstruct_type_field(%s,%d,%s)\n", parsed_relation, i.first.c_str(), j, type_name.c_str());
         }
     }
 }
 
-void IRManager::get_global_var(){
+void IRManager::get_global_var(char * parsed_domain, char * parsed_relation){
     printf("global_Vars: \n********************************\n");
-    for(auto I:global_ref){
+    for(auto I : global_ref){
         printf("    id:%s, ty:%s\n", I.first.c_str(), get_value_type(I.second->getType()).c_str());
         printf("    id:%s, name:%s\n", I.first.c_str(), I.first.c_str());
         //printf("    id:%s, alignment:%d\n", I.first.c_str(), I.second->MaxAlignmentExponent);
@@ -514,28 +565,51 @@ void IRManager::get_global_var(){
         printf("    id:%s, section:%s\n", I.first.c_str(), I.second->getSection().str().c_str());
         printf("    id:%s, threadlocal mode:%d\n", I.first.c_str(), I.second->getThreadLocalMode());
         printf("    id:%s, constant:%d\n", I.first.c_str(), I.second->isConstantUsed());
+
+
+        sprintf(parsed_domain, "%sglobal_variable(%s)\n", parsed_domain, I.first.c_str());
+        sprintf(parsed_relation, "%sglobal_variable_type(%s,%s)\n", parsed_relation, I.first.c_str(), get_value_type(I.second->getType()).c_str());
+        sprintf(parsed_relation, "%sglobal_variable_name(%s,%s)\n", parsed_relation, I.first.c_str(), I.first.c_str());
+        //not sure
+        sprintf(parsed_relation, "%sglobal_variable_alignment(%s,%d)\n", parsed_relation, I.first.c_str(), 0);
+        sprintf(parsed_relation, "%sglobal_variable_linkage_type(%s,%s)\n", parsed_relation, I.first.c_str(), get_linkage_string(I.second->getLinkage()).c_str());
+        sprintf(parsed_relation, "%sglobal_variable_visibility(%s,%s)\n", parsed_relation, I.first.c_str(), get_visibility_string(I.second->getVisibility()).c_str());
+        sprintf(parsed_relation, "%sglobal_variable_initializer(%s,%s)\n", parsed_relation, I.first.c_str(), I.second->getValueName()->getValue()->getNameOrAsOperand().c_str());
+        sprintf(parsed_relation, "%sglobal_variable_section(%s,%s)\n", parsed_relation, I.first.c_str(), I.second->getSection().str().c_str());
+        sprintf(parsed_relation, "%sglobale_threadlocal_mode(%s,%s)\n", parsed_relation, I.first.c_str(), get_mode_string(I.second->getThreadLocalMode()).c_str());
+        if(I.second->isConstantUsed())
+            sprintf(parsed_relation, "%sglobal_variable_constant(%s)\n", parsed_relation, I.first.c_str());
     }
 }
 
-void IRManager::get_aliases(){
+void IRManager::get_aliases(char * parsed_domain, char * parsed_relation){
     printf("global_Alises: \n*******************************\n");
-    for(auto I:alias_ref){
+    for(auto I : alias_ref){
         printf("\tid:%s, ty:%s\n", I.first.c_str(), get_value_type(I.second->getType()).c_str());
         printf("\tid:%s, name:%s\n", I.first.c_str(), I.second->getName().data());
         //the two below are enums, maybe these can be more precisely shown by listing their strs
         printf("\tid:%s, ty:%d\n", I.first.c_str(), I.second->getLinkage());
         printf("\tid:%s, visibility:%d\n", I.first.c_str(), I.second->getVisibility());
         printf("\tid:%s, aliasee:%s\n", I.first.c_str(), I.second->getAliasee()->getName().data());
+
+        sprintf(parsed_domain, "%salias(%s)\n", parsed_domain, I.first.c_str());
+        sprintf(parsed_relation, "%salias_type(%s,%s)\n", parsed_relation, I.first.c_str(), get_value_type(I.second->getType()).c_str());
+        sprintf(parsed_relation, "%salias_name(%s,%s)\n", parsed_relation, I.first.c_str(), I.second->getName().data());
+        //the two below are enums, maybe these can be more precisely shown by listing their strs
+        sprintf(parsed_relation, "%salias_linkage_type(%s,%s)\n", parsed_relation, I.first.c_str(), get_linkage_string(I.second->getLinkage()).c_str());
+        sprintf(parsed_relation, "%salias_visibility(%s,%s)\n", parsed_relation, I.first.c_str(), get_visibility_string(I.second->getVisibility()).c_str());
+        sprintf(parsed_relation, "%salias_aliasee(%s,%s)\n", parsed_relation, I.first.c_str(), I.second->getAliasee()->getName().data());
     }
 }
 
 
 
-void IRManager::get_functions() {
+void IRManager::get_functions(char * parsed_domain, char * parsed_relation) {
     printf("functions: \n********************************\n");
     for(auto I:func_ref){
-        //what is functiontype really mean? if we cast the get function type method, it'll return func type. I don't
-        //know if this is what we want.
+        string func_type = formatv("{0}", * (I.second->getFunctionType()));
+        sprintf(parsed_domain, "%sfunction(%s)", parsed_domain, I.first.c_str());
+
         printf("\tid:%s, ty:%s\n", I.first.c_str(), get_value_type(dyn_cast<Type>(I.second->getFunctionType())).c_str());
         printf("\tid:%s, name:%s\n", I.first.c_str(), I.second->getName().data());
         printf("\tid:%s, linkage type:%d\n", I.first.c_str(), I.second->getLinkage());
@@ -543,15 +617,24 @@ void IRManager::get_functions() {
         //calling convension is unsigned, what does it mean?
         printf("\tid:%s, calling convension:%d\n", I.first.c_str(), I.second->getCallingConv());
         //ref to none local global
+        sprintf(parsed_relation, "%sfunction_type(%s,%s)\n", parsed_relation, I.first.c_str(), func_type.c_str());
+        sprintf(parsed_relation, "%sfunction_name(%s,%s)\n", parsed_relation, I.first.c_str(), I.second->getName().data());
+        sprintf(parsed_relation, "%sfunction_linkage_type(%s,%s)\n", parsed_relation, I.first.c_str(), get_linkage_string(I.second->getLinkage()).c_str());
+        sprintf(parsed_relation, "%sfunction_visibility(%s,%s)\n", parsed_relation, I.first.c_str(), get_visibility_string(I.second->getVisibility()).c_str());
+        //calling convension is unsigned, what does it mean?
+        sprintf(parsed_relation, "%sfunction_calling_convension(%s,%d)\n", parsed_relation, I.first.c_str(), I.second->getCallingConv());
+
+
         switch(I.second->getUnnamedAddr()){
             case llvm::GlobalValue::UnnamedAddr::Global:
             printf("\tid:%s, unnamed addr:global\n", I.first.c_str());
+            sprintf(parsed_relation, "%sfunction_unnamed_addr(%s,Global)\n", parsed_relation, I.first.c_str());
             break;
             case llvm::GlobalValue::UnnamedAddr::Local:
-            printf("\tid:%s, unnamed addr:local\n", I.first.c_str());
+            sprintf(parsed_relation, "%sfunction_unnamed_addr(%s,Local)\n", parsed_relation, I.first.c_str());
             break;
             case llvm::GlobalValue::UnnamedAddr::None:
-            printf("\tid:%s, unnamed addr:none\n", I.first.c_str());
+            sprintf(parsed_relation, "%sfunction_unnamed_addr(%s,None)\n", parsed_relation, I.first.c_str());
             break;
             default:
             printf("\tsomething is error.\n");
@@ -573,6 +656,37 @@ void IRManager::get_functions() {
             printf("\tid:%s, num_arg:%d, arg_id:%s\n", I.first.c_str(), i, arg_n.c_str());
         }
         printf("\tid:%s, param nums:%ld\n", I.first.c_str(), I.second->arg_size());
+
+
+
+        sprintf(parsed_relation, "%sfunction_alignment(%s,%ld)\n", parsed_relation, I.first.c_str(), I.second->getAlignment());
+        if(I.second->hasGC())
+            sprintf(parsed_relation, "%sid:%s, gc:%s\n", I.first.c_str(), parsed_relation, I.second->getGC().c_str());
+        //what exactly personally function is?
+        if(I.second->hasPersonalityFn())
+            sprintf(parsed_relation, "%sfunction_pers_fn(%s,%s)\n", parsed_relation, I.first.c_str(), I.second->getPersonalityFn()->getName().data());
+        //attribute has some questions
+        for(auto J : I.second->getAttributes().getAttributes(llvm::AttributeList::FunctionIndex)){
+            sprintf(parsed_relation, "%sfunction_attribute(%s,%s)\n", parsed_relation, I.first.c_str(), J.getAsString().c_str());
+        }
+        for(auto J : I.second->getAttributes().getAttributes(llvm::AttributeList::ReturnIndex)){
+            sprintf(parsed_relation, "%sfunction_return_attribute(%s,%s)\n", parsed_relation, I.first.c_str(), J.getAsString().c_str());
+        }
+        //sprintf(parsed_relation, "%sid:%s, return attribute:%s\n", parsed_relation, I.first.c_str(), I.second->attri);
+        if(I.second->hasSection())
+        sprintf(parsed_relation, "%sfunction_custom_section(%s,%s)\n", parsed_relation, I.first.c_str(), I.second->getSection().str().c_str());
+        for(unsigned int i=0;i < I.second->arg_size(); i++){
+            std::string arg_n = I.first + I.second->getArg(i)->getName().data();
+            llvm::Argument * arg = I.second->getArg(i);
+            arg_ref.insert(make_pair(arg_n, arg));
+            sprintf(parsed_relation, "%sfunction_param(%s, %d, %s)\n", parsed_relation, I.first.c_str(), i, arg_n.c_str());
+            //also the attribute
+
+            for(auto J : I.second->getAttributes().getAttributes(i+1)){
+                sprintf(parsed_relation, "%sfunction_param_attribute(%s,%d,%s)\n", parsed_relation, I.first.c_str(), i, J.getAsString().c_str());
+            }
+        }
+        sprintf(parsed_relation, "%sfunction_nparams(%s,%ld)\n", parsed_relation, I.first.c_str(), I.second->arg_size());
     }
 }
 
@@ -664,7 +778,7 @@ void IRManager::parse_insts(){
     }
 }
 
-void IRManager::get_terminate_insts(){
+void IRManager::get_terminate_insts(char * parsed_domain, char * parsed_relation){
     printf("terminater_insts: \n********************************\n");
     printf("\treturn_insts: \n\t********************************\n");
     for(auto I : ret_inst_ref){
@@ -676,6 +790,17 @@ void IRManager::get_terminate_insts(){
             printf("\t\tid: %s, ret: null\n", I.first.c_str());
         }
     }
+
+    for(auto I : ret_inst_ref){
+        sprintf(parsed_domain, "%sret_instruction(%s)\n", parsed_domain, I.first.c_str());
+        if(auto ret = I.second->getReturnValue()){
+            sprintf(parsed_relation, "%sret_instruction_val(%s,%s)\n", parsed_relation, I.first.c_str(), get_inst_id(dyn_cast<llvm::Instruction>(ret), inst_map).c_str());
+        }
+        else{
+            sprintf(parsed_relation, "%sret_instruction_void(%s)\n", parsed_relation, I.first.c_str());
+        }
+    }
+
     printf("\tbranch_insts: \n\t********************************\n");
     for(auto I : br_inst_ref){
         printf("\t\tid: %s\n", I.first.c_str());
@@ -692,7 +817,44 @@ void IRManager::get_terminate_insts(){
             printf("\t\tid: %s, false flag: %s\n", I.first.c_str(), get_inst_id(dyn_cast<llvm::Instruction>(dest), inst_map).c_str());
         }
     }
+
+
+    for(auto I : br_inst_ref){
+        sprintf(parsed_domain, "%sbr_instruction(%s)\n", parsed_domain, I.first.c_str());
+        if(I.second->isConditional()){
+            llvm::Instruction * Inst = dyn_cast<llvm::Instruction>(I.second->getCondition());
+            llvm::Value * true_flg = I.second->getOperand(1);
+            llvm::Value * false_flg = I.second->getOperand(2);
+            sprintf(parsed_relation, "%sbr_cond_instruction(%s)\n", parsed_domain, I.first.c_str());
+            sprintf(parsed_relation, "%sbr_cond_instruction_cond(%s,%s)\n", parsed_relation, I.first.c_str(), Inst->getName().str().c_str());
+            sprintf(parsed_relation, "%sbr_cond_instruction_iftrue(%s,%s)\n", parsed_relation, I.first.c_str(), get_inst_id(dyn_cast<llvm::Instruction>(true_flg), inst_map).c_str());
+            sprintf(parsed_relation, "%sbr_cond_instruction_iffalse(%s,%s)\n", parsed_relation, I.first.c_str(), get_inst_id(dyn_cast<llvm::Instruction>(false_flg), inst_map).c_str());
+        }
+        else{
+            llvm::Value * dest = dyn_cast<llvm::Value>(I.second->getOperand(0));
+            sprintf(parsed_relation, "%sbr_uncond_instruction(%s)\n", parsed_domain, I.first.c_str());
+            sprintf(parsed_relation, "%sbr_uncond_dest(%s,%s)\n", parsed_domain, I.first.c_str(), get_inst_id(dyn_cast<llvm::Instruction>(dest), inst_map).c_str());
+        }
+    }
+
     printf("\tswitch_insts: \n\t********************************\n");
+    for(auto I : switch_inst_ref){
+        printf("\t\tid: %s\n", I.first.c_str());
+        llvm::Instruction * Inst = dyn_cast<llvm::Instruction>(I.second->getCondition());
+        printf("\t\tid: %s, condition: %s", I.first.c_str(), Inst->getName().str().c_str());
+        //default jmp label
+        llvm:: Value * label = I.second->getOperand(1);
+        printf("\t\tid: %s, default label:%s", I.first.c_str(), label->getName().str().c_str());
+        printf("\t\tid: %s, num label:%d", I.first.c_str(), I.second->getNumCases());
+        int num_cases = I.second->getNumCases();
+        for(int i = 0 ; i < num_cases ; i++){
+            llvm::Value * caseval_i = I.second->getOperand(2*i+1);
+            llvm::Value * caselabel_i = I.second->getOperand(2*(i+1));
+            printf("\t\t\tid:%s, case: %d, label: %s\n", I.first.c_str(), i, get_inst_id(dyn_cast<llvm::Instruction>(caselabel_i), inst_map).c_str());
+            printf("\t\t\tid:%s, case: %d, value: %s\n", I.first.c_str(), i, caseval_i->getName().str().c_str());
+        }
+    }
+
     for(auto I : switch_inst_ref){
         printf("\t\tid: %s\n", I.first.c_str());
         llvm::Instruction * Inst = dyn_cast<llvm::Instruction>(I.second->getCondition());
@@ -726,7 +888,7 @@ void IRManager::get_terminate_insts(){
     }
 }
 
-void IRManager::get_binary_insts(){
+void IRManager::get_binary_insts(char * parsed_domain, char * parsed_relation){
     printf("binary_insts: \n********************************\n");
     for(auto I : binary_inst_ref){
         std::string opcode = I.second->getOpcodeName();
@@ -790,7 +952,7 @@ void IRManager::get_binary_insts(){
     }
 }
 
-void IRManager::get_vector_insts(){
+void IRManager::get_vector_insts(char * parsed_domain, char * parsed_relation){
     printf("vector_insts: \n********************************\n");
     printf("\textract_element_insts: \n********************************\n");
     for(auto I : ex_ele_inst_ref){
@@ -819,7 +981,7 @@ void IRManager::get_vector_insts(){
 
 }
 
-void IRManager::get_aggregate_insts(){
+void IRManager::get_aggregate_insts(char * parsed_domain, char * parsed_relation){
     printf("vector_insts: \n********************************\n");
     printf("\textract_element_insts: \n********************************\n");
     for(auto I : ex_val_inst_ref){
@@ -845,7 +1007,7 @@ void IRManager::get_aggregate_insts(){
     }
 }
 
-void IRManager::get_memory_insts(){
+void IRManager::get_memory_insts(char * parsed_domain, char * parsed_relation){
     printf("memory_insts: \n********************************\n");
     printf("\talloca_insts: \n********************************\n");
     for(auto I : alloc_inst_ref){
@@ -919,7 +1081,7 @@ void IRManager::get_memory_insts(){
 
 
 
-void IRManager::get_conversion_insts(){
+void IRManager::get_conversion_insts(char * parsed_domain, char * parsed_relation){
     printf("conversion_insts: \n********************************\n");
     for(auto I : conversion_inst_ref){
         printf("\tid: %s\n", I.first.c_str());
@@ -931,7 +1093,7 @@ void IRManager::get_conversion_insts(){
 }
 
 
-void IRManager::get_other_insts(){
+void IRManager::get_other_insts(char * parsed_domain, char * parsed_relation){
     printf("other_insts: \n********************************\n");
     printf("\ticmp_insts: \n\t********************************\n");
     for(auto I : icmp_inst_ref){
@@ -1058,4 +1220,89 @@ string IRManager::get_ordering_kind(llvm::AtomicOrdering ao){
 }
 
 
+string IRManager::get_visibility_string(llvm::GlobalValue::VisibilityTypes gv_ty){
+    string ty_string="";
+    switch(gv_ty){
+        case llvm::GlobalValue::VisibilityTypes::DefaultVisibility:
+        ty_string = "DefaultVisibility";
+        break;
+        case llvm::GlobalValue::VisibilityTypes::HiddenVisibility:
+        ty_string = "HiddenVisibility";
+        break;
+        case llvm::GlobalValue::VisibilityTypes::ProtectedVisibility:
+        ty_string = "ProtectedVisibility";
+        break;
+        default:
+        break;
+    }
+    return ty_string;
+}
 
+
+string IRManager::get_linkage_string(llvm::GlobalValue::LinkageTypes gv_ty){
+    string ty_string="";
+    switch(gv_ty){
+        case llvm::GlobalValue::LinkageTypes::AppendingLinkage:
+        ty_string = "AppendingLinkage";
+        break;
+        case llvm::GlobalValue::LinkageTypes::AvailableExternallyLinkage:
+        ty_string = "AvailableExternallyLinkage";
+        break;
+        case llvm::GlobalValue::LinkageTypes::CommonLinkage:
+        ty_string = "CommonLinkage";
+        break;
+        case llvm::GlobalValue::LinkageTypes::ExternalLinkage:
+        ty_string = "ExternalLinkage";
+        break;
+        case llvm::GlobalValue::LinkageTypes::ExternalWeakLinkage:
+        ty_string = "ExternalWeakLinkage";
+        break;
+        case llvm::GlobalValue::LinkageTypes::InternalLinkage:
+        ty_string = "InternalLinkage";
+        break;
+        case llvm::GlobalValue::LinkageTypes::LinkOnceAnyLinkage:
+        ty_string = "LinkOnceAnyLinkage";
+        break;
+        case llvm::GlobalValue::LinkageTypes::LinkOnceODRLinkage:
+        ty_string = "LinkOnceODRLinkage";
+        break;
+        case llvm::GlobalValue::LinkageTypes::PrivateLinkage:
+        ty_string = "PrivateLinkage";
+        break;
+        case llvm::GlobalValue::LinkageTypes::WeakAnyLinkage:
+        ty_string = "WeakAnyLinkage";
+        break;
+        case llvm::GlobalValue::LinkageTypes::WeakODRLinkage:
+        ty_string = "WeakODRLinkage";
+        break;
+        default:
+        break;
+    }
+    return ty_string;
+
+}
+
+
+string IRManager::get_mode_string(llvm::GlobalValue::ThreadLocalMode gv_ty){
+    string ty_string="";
+    switch(gv_ty){
+        case llvm::GlobalValue::ThreadLocalMode::GeneralDynamicTLSModel:
+        ty_string = "GeneralDynamicTLSModel";
+        break;
+        case llvm::GlobalValue::ThreadLocalMode::InitialExecTLSModel:
+        ty_string = "InitialExecTLSModel";
+        break;
+        case llvm::GlobalValue::ThreadLocalMode::LocalDynamicTLSModel:
+        ty_string = "LocalDynamicTLSModel";
+        break;
+        case llvm::GlobalValue::ThreadLocalMode::LocalExecTLSModel:
+        ty_string = "LocalExecTLSModel";
+        break;
+        case llvm::GlobalValue::ThreadLocalMode::NotThreadLocal:
+        ty_string = "NotThreadLocal";
+        break;
+        default:
+        break;
+    }
+    return ty_string;
+}

@@ -841,11 +841,11 @@ void IRManager::get_terminate_insts(char * parsed_domain, char * parsed_relation
     for(auto I : switch_inst_ref){
         printf("\t\tid: %s\n", I.first.c_str());
         llvm::Instruction * Inst = dyn_cast<llvm::Instruction>(I.second->getCondition());
-        printf("\t\tid: %s, condition: %s", I.first.c_str(), Inst->getName().str().c_str());
+        printf("\t\tid: %s, condition: %s\n", I.first.c_str(), Inst->getName().str().c_str());
         //default jmp label
         llvm:: Value * label = I.second->getOperand(1);
-        printf("\t\tid: %s, default label:%s", I.first.c_str(), label->getName().str().c_str());
-        printf("\t\tid: %s, num label:%d", I.first.c_str(), I.second->getNumCases());
+        printf("\t\tid: %s, default label:%s\n", I.first.c_str(), label->getName().str().c_str());
+        printf("\t\tid: %s, num label:%d\n", I.first.c_str(), I.second->getNumCases());
         int num_cases = I.second->getNumCases();
         for(int i = 0 ; i < num_cases ; i++){
             llvm::Value * caseval_i = I.second->getOperand(2*i+1);
@@ -856,35 +856,53 @@ void IRManager::get_terminate_insts(char * parsed_domain, char * parsed_relation
     }
 
     for(auto I : switch_inst_ref){
-        printf("\t\tid: %s\n", I.first.c_str());
+        sprintf(parsed_domain, "%sswitch_instruction(%s)\n", parsed_domain, I.first.c_str());
         llvm::Instruction * Inst = dyn_cast<llvm::Instruction>(I.second->getCondition());
-        printf("\t\tid: %s, condition: %s", I.first.c_str(), Inst->getName().str().c_str());
+        sprintf(parsed_relation, "%sswitch_instruction_cond(%s,%s)\n", parsed_relation, I.first.c_str(), Inst->getName().str().c_str());
         //default jmp label
         llvm:: Value * label = I.second->getOperand(1);
-        printf("\t\tid: %s, default label:%s", I.first.c_str(), label->getName().str().c_str());
-        printf("\t\tid: %s, num label:%d", I.first.c_str(), I.second->getNumCases());
+        sprintf(parsed_relation, "%sswitch_instruction_default(%s,%s)\n", parsed_relation, I.first.c_str(), label->getName().str().c_str());
+        sprintf(parsed_relation, "%sswitch_instruction_ncases(%s,%d)\n", parsed_relation, I.first.c_str(), I.second->getNumCases());
         int num_cases = I.second->getNumCases();
         for(int i = 0 ; i < num_cases ; i++){
             llvm::Value * caseval_i = I.second->getOperand(2*i+1);
             llvm::Value * caselabel_i = I.second->getOperand(2*(i+1));
-            printf("\t\t\tid:%s, case: %d, label: %s\n", I.first.c_str(), i, get_inst_id(dyn_cast<llvm::Instruction>(caselabel_i), inst_map).c_str());
-            printf("\t\t\tid:%s, case: %d, value: %s\n", I.first.c_str(), i, caseval_i->getName().str().c_str());
+            sprintf(parsed_relation, "%sswitch_instruction_case_label(%s,%d,%s)\n", parsed_relation, I.first.c_str(), i, get_inst_id(dyn_cast<llvm::Instruction>(caselabel_i), inst_map).c_str());
+            sprintf(parsed_relation, "%sswitch_instruction_case_value(%s,%d,%s)\n", parsed_relation, I.first.c_str(), i, caseval_i->getName().str().c_str());
         }
     }
     printf("\ttindirect_branch_insts: \n\t********************************\n");
     for(auto I : inbr_inst_ref){
         printf("\t\tid: %s\n", I.first.c_str());
-        printf("\t\tid: %s, addr: %s",I.first.c_str(), I.second->getAddress()->getName().str().c_str());
-        printf("\t\tid: %s, num labels: %d", I.first.c_str(), I.second->getNumDestinations());
+        printf("\t\tid: %s, addr: %s\n",I.first.c_str(), I.second->getAddress()->getName().str().c_str());
+        printf("\t\tid: %s, num labels: %d\n", I.first.c_str(), I.second->getNumDestinations());
         int label_num = I.second->getNumDestinations();
         for(int i = 0 ; i < label_num ; i++){
             llvm::Value * addr_i = I.second->getOperand(i);
-            printf("\t\t\tid: %s, dest: %d, label: %s", I.first.c_str(), i, get_inst_id(dyn_cast<llvm::Instruction>(addr_i), inst_map).c_str());
+            printf("\t\t\tid: %s, dest: %d, label: %s\n", I.first.c_str(), i, get_inst_id(dyn_cast<llvm::Instruction>(addr_i), inst_map).c_str());
         }
     }
+
+
+    for(auto I : inbr_inst_ref){
+        sprintf(parsed_domain, "%sindirectbr_instruction(%s)\n", parsed_domain, I.first.c_str());
+        sprintf(parsed_relation, "%sindirectbr_instruction_address(%s,%s)\n", parsed_relation, I.first.c_str(), I.second->getAddress()->getName().str().c_str());
+        sprintf(parsed_relation, "%sindirectbr_instruction_nlabels(%s,%d)\n", parsed_relation, I.first.c_str(), I.second->getNumDestinations());
+        int label_num = I.second->getNumDestinations();
+        for(int i = 0 ; i < label_num ; i++){
+            llvm::Value * addr_i = I.second->getOperand(i);
+            sprintf(parsed_relation, "%sindirectbr_instruction_label(%s,%d,%s)\n", parsed_relation, I.first.c_str(), i, get_inst_id(dyn_cast<llvm::Instruction>(addr_i), inst_map).c_str());
+        }
+    }
+
+
     printf("\tunreachable_insts: \n\t********************************\n");
     for(auto I : unre_inst_ref){
         printf("\t\tid: %s\n",I.first.c_str());
+    }
+
+    for(auto I : unre_inst_ref){
+        printf(parsed_domain, "unreachable_instruction(%s)\n", parsed_domain, I.first.c_str());
     }
 }
 
@@ -950,6 +968,14 @@ void IRManager::get_binary_insts(char * parsed_domain, char * parsed_relation){
         }
         */
     }
+
+
+    for(auto I : binary_inst_ref){
+        std::string opcode = I.second->getOpcodeName();
+        printf(parsed_domain, "%s%s_instruction(%s)\n", parsed_domain, opcode.c_str(), I.first.c_str());
+        printf(parsed_relation, "%s%s_instruction_first_operand(%s,%s)\n", parsed_relation, opcode.c_str(), I.first.c_str(), I.second->getOperand(0)->getNameOrAsOperand().c_str());
+        printf(parsed_relation, "%s%s_instruction_second_operand(%s,%s)\n", parsed_relation, opcode.c_str(), I.first.c_str(), I.second->getOperand(1)->getNameOrAsOperand().c_str());
+    }
 }
 
 void IRManager::get_vector_insts(char * parsed_domain, char * parsed_relation){
@@ -961,6 +987,7 @@ void IRManager::get_vector_insts(char * parsed_domain, char * parsed_relation){
         printf("\t\tid: %s, vector: %s\n", I.first.c_str(), I.second->getOperand(0)->getName().str().c_str());
         printf("\t\tid: %s, index: %s\n", I.first.c_str(), I.second->getOperand(1)->getNameOrAsOperand().c_str());
     }
+
     printf("\tinsert_element_insts: \n********************************\n");
     for(auto I : in_ele_inst_ref){
         printf("\t\tid: %s\n", I.first.c_str());
@@ -977,6 +1004,33 @@ void IRManager::get_vector_insts(char * parsed_domain, char * parsed_relation){
         printf("\t\tid: %s, vector1: %s\n", I.first.c_str(), I.second->getOperand(0)->getName().str().c_str());
         printf("\t\tid: %s, vector2: %s\n", I.first.c_str(), I.second->getOperand(1)->getName().str().c_str());
         printf("\t\tid: %s, index: %s\n", I.first.c_str(), I.second->getOperand(2)->getNameOrAsOperand().c_str());
+    }
+
+
+
+    for(auto I : ex_ele_inst_ref){
+        sprintf(parsed_domain, "%sextractelement_instruction(%s)\n", parsed_domain, I.first.c_str());
+        //whether the vector name should use get name or get name or as operand is doubtful
+        sprintf(parsed_relation, "%sextractelement_instruction_base(%s,%s)\n", parsed_relation, I.first.c_str(), I.second->getOperand(0)->getName().str().c_str());
+        sprintf(parsed_relation, "%sextractelement_instruction_index(%s,%s)\n", parsed_relation, I.first.c_str(), I.second->getOperand(1)->getNameOrAsOperand().c_str());
+    }
+    
+    printf("\tinsert_element_insts: \n********************************\n");
+    for(auto I : in_ele_inst_ref){
+        sprintf(parsed_domain, "%sinsertelement_instruction(%s)\n", parsed_domain, I.first.c_str());
+        //whether the vector name should use get name or get name or as operand is doubtful
+        sprintf(parsed_relation, "%sinsertelement_instruction_base(%s,%s)\n", parsed_relation, I.first.c_str(), I.second->getOperand(0)->getName().str().c_str());
+        sprintf(parsed_relation, "%sinsertelement_instruction_index(%s,%s)\n", parsed_relation, I.first.c_str(), I.second->getOperand(1)->getNameOrAsOperand().c_str());
+        sprintf(parsed_relation, "%sinsertelement_instruction_value(%s,%s)\n", parsed_relation, I.first.c_str(), I.second->getOperand(2)->getNameOrAsOperand().c_str());
+    }
+
+    printf("\tshuffle_vector_insts: \n********************************\n");
+    for(auto I : shu_vec_inst_ref){
+        sprintf(parsed_domain, "%sshufflevector_instruction(%s\n", parsed_domain, I.first.c_str());
+        //whether the vector name should use get name or get name or as operand is doubtful
+        sprintf(parsed_relation, "%sshufflevector_instruction_first_vector(%s,%s)\n", parsed_relation, I.first.c_str(), I.second->getOperand(0)->getName().str().c_str());
+        sprintf(parsed_relation, "%sshufflevector_instruction_second_vector(%s,%s)\n", parsed_relation, I.first.c_str(), I.second->getOperand(1)->getName().str().c_str());
+        sprintf(parsed_relation, "%sshufflevector_instruction_index(%s,%s)\n", parsed_relation, I.first.c_str(), I.second->getOperand(2)->getNameOrAsOperand().c_str());
     }
 
 }
@@ -1002,6 +1056,28 @@ void IRManager::get_aggregate_insts(char * parsed_domain, char * parsed_relation
         printf("\t\tid: %s, val: %s\n", I.first.c_str(), I.second->getOperand(1)->getNameOrAsOperand().c_str());
         for(unsigned int i = 0 ; i < I.second->getNumIndices() ; i++){
             printf("\t\t\tid: %s, indice index: %d, val: %d\n", I.first.c_str(), i, I.second->getIndices()[i]);
+        }
+        
+    }
+
+
+    for(auto I : ex_val_inst_ref){
+        sprintf(parsed_domain, "%sextractvalue_instruction(%s)\n", parsed_domain, I.first.c_str());
+        //whether the vector name should use get name or get name or as operand is doubtful
+        sprintf(parsed_relation, "%sextractvalue_instruction_base(%s,%s)\n", parsed_relation, I.first.c_str(), I.second->getOperand(0)->getName().str().c_str());
+        sprintf(parsed_relation, "%sextractvalue_instruction_nindices(%s,%d)\n", parsed_relation, I.first.c_str(), I.second->getNumIndices());
+        for(unsigned int i = 0 ; i < I.second->getNumIndices() ; i++){
+            printf(parsed_relation, "%sextractvalue_instruction_index(%s,%d,%d)\n", parsed_relation, I.first.c_str(), i, I.second->getIndices()[i]);
+        }
+    }
+    for(auto I : in_val_inst_ref){
+        sprintf(parsed_domain, "%sinsertvalue_instruction(%s)\n", parsed_domain, I.first.c_str());
+        //whether the vector name should use get name or get name or as operand is doubtful
+        sprintf(parsed_relation, "%sinsertvalue_instruction_base(%s,%s)\n", parsed_relation, I.first.c_str(), I.second->getOperand(0)->getName().str().c_str());
+        sprintf(parsed_relation, "%sinsertvalue_instruction_value(%s,%d)\n", parsed_relation, I.first.c_str(), I.second->getNumIndices());
+        sprintf(parsed_relation, "%sinsertvalue_instruction_nindices(%s,%s)\n", parsed_relation, I.first.c_str(), I.second->getOperand(1)->getNameOrAsOperand().c_str());
+        for(unsigned int i = 0 ; i < I.second->getNumIndices() ; i++){
+            sprintf(parsed_relation, "%sinsertvalue_instruction_index(%s,%d,%d)\n", parsed_relation, I.first.c_str(), i, I.second->getIndices()[i]);
         }
         
     }
@@ -1077,6 +1153,75 @@ void IRManager::get_memory_insts(char * parsed_domain, char * parsed_relation){
         }
         */
     }
+
+
+
+    for(auto I : alloc_inst_ref){
+        sprintf(parsed_domain, "%salloca_instruction(%s)\n", parsed_domain, I.first.c_str());
+        sprintf(parsed_relation, "%salloca_instruction_alignment(%s,%ld)\n", parsed_relation, I.first.c_str(), I.second->getAlign().value());
+        sprintf(parsed_relation, "%salloca_instruction_size(%s,%s)\n", parsed_relation, I.first.c_str(), I.second->getArraySize()->getNameOrAsOperand().c_str());
+        sprintf(parsed_relation, "%salloca_instruction_type(%s,%s)\n", parsed_relation, I.first.c_str(), get_value_type(I.second->getAllocatedType()).c_str());
+    }
+    for(auto I : load_inst_ref){
+        sprintf(parsed_domain, "%sload_instruction(%s)\n", parsed_domain, I.first.c_str());
+        sprintf(parsed_relation, "%sload_instruction_alignment(%s,%ld)\n", parsed_relation, I.first.c_str(), I.second->getAlign().value());
+        //the output is a enum class, turn into str if needed
+        sprintf(parsed_relation, "%sload_instruction_ordering(%s,%s)\n", parsed_relation, I.first.c_str(), get_ordering_kind(I.second->getOrdering()).c_str());
+        if(I.second->isVolatile())
+            sprintf(parsed_relation, "%sload_instruction_volatile(%s)\n", parsed_relation, I.first.c_str());
+        sprintf(parsed_relation, "%sload_instruction_address(%s,%u)\n", parsed_relation, I.first.c_str(), I.second->getPointerAddressSpace());
+    }
+    for(auto I : store_inst_ref){
+        sprintf(parsed_domain, "%sstore_instruction(%s)\n", parsed_domain, I.first.c_str());
+        sprintf(parsed_relation, "%sstore_instruction_alignment(%s,%ld)\n", parsed_relation, I.first.c_str(), I.second->getAlign().value());
+        //the output is a enum class, turn into str if needed
+        sprintf(parsed_relation, "%sstore_instruction_ordering(%s,%s)\n", parsed_relation, I.first.c_str(), get_ordering_kind(I.second->getOrdering()).c_str());
+        sprintf(parsed_relation, "%sstore_instruction_volatile(%s,%s)\n", parsed_relation, I.first.c_str(), I.second->isVolatile()?"true":"false");
+        sprintf(parsed_relation, "%sstore_instruction_value(%s,%s)\n", parsed_relation, I.first.c_str(), I.second->getValueOperand()->getNameOrAsOperand().c_str());
+        sprintf(parsed_relation, "%sstore_instruction_address(%s,%u)\n", parsed_relation, I.first.c_str(), I.second->getPointerAddressSpace());
+    }
+    for(auto I : fence_inst_ref){
+        sprintf(parsed_domain, "%sfence_instruction(%s)\n", parsed_domain, I.first.c_str());
+        //the output is a enum class, turn into str if needed
+        sprintf(parsed_relation, "%sfence_instruction_ordering(%s,%s)\n", parsed_relation, I.first.c_str(), get_ordering_kind(I.second->getOrdering()).c_str());
+    }
+    for(auto I : cmpx_inst_ref){
+        sprintf(parsed_domain, "%scmpxchg_instruction(%s)\n", parsed_domain, I.first.c_str());
+        //the output is a enum class, turn into str if needed
+        sprintf(parsed_relation, "%scmpxchg_instruction_success_ordering(%s,%s)\n", parsed_relation, I.first.c_str(), get_ordering_kind(I.second->getSuccessOrdering()).c_str());
+        sprintf(parsed_relation, "%scmpxchg_instruction_failure_ordering(%s,%s)\n", parsed_relation, I.first.c_str(), get_ordering_kind(I.second->getFailureOrdering()).c_str());
+        if(I.second->isVolatile())
+            sprintf(parsed_relation, "%scmpxchg_instruction_volatile(%s)\n", parsed_relation, I.first.c_str());
+        sprintf(parsed_relation, "%scmpxchg_instruction_address(%s,%s)\n", parsed_relation, I.first.c_str(), I.second->getCompareOperand()->getNameOrAsOperand().c_str());
+        sprintf(parsed_relation, "%scmpxchg_instruction_cmp(%s,%u)\n", parsed_relation, I.first.c_str(), I.second->getPointerAddressSpace());
+        sprintf(parsed_relation, "%scmpxchg_instruction_new(%s,%s)\n", parsed_relation, I.first.c_str(), I.second->getNewValOperand()->getNameOrAsOperand().c_str());
+    }
+    printf("\tatomic_insts: \n********************************\n");
+    for(auto I : atom_inst_ref){
+        sprintf(parsed_domain, "%satomicrmw_instruction(%s)\n", parsed_domain, I.first.c_str());
+        //the output is a enum class, turn into str if needed
+        sprintf(parsed_relation, "%satomicrmw_instruction_ordering(%s,%s)\n", parsed_relation, I.first.c_str(), get_ordering_kind(I.second->getOrdering()).c_str());
+        // not sure whether get opcode name will return the correct name
+        sprintf(parsed_relation, "%satomicrmw_instruction_opeartion(%s,%s)\n", parsed_relation, I.first.c_str(), I.second->getOpcodeName());
+        if(I.second->isVolatile())
+            sprintf(parsed_relation, "%satomicrmw_instruction_volatile(%s)\n", parsed_relation, I.first.c_str());
+        sprintf(parsed_relation, "%satomicrmw_instruction_address(%s,%u)\n", parsed_relation, I.first.c_str(), I.second->getPointerAddressSpace());
+        sprintf(parsed_relation, "%satomicrmw_instruction_value(%s,%s)\n", parsed_relation, I.first.c_str(), I.second->getValOperand()->getNameOrAsOperand().c_str());
+    }
+    printf("\tget_ele_ptr: \n********************************\n");
+    for(auto I : get_ele_ptr_inst_ref){
+        sprintf(parsed_domain, "%sgetelementptr_instruction(%s)\n", parsed_domain, I.first.c_str());
+        if(I.second->isInBounds())
+            sprintf(parsed_relation, "%sgetelementptr_instruction_inbounds(%s)\n", parsed_relation, I.first.c_str());
+        sprintf(parsed_relation, "%sgetelementptr_instruction_base(%s,%u)\n", parsed_relation, I.first.c_str(), I.second->getPointerAddressSpace());
+        sprintf(parsed_relation, "%sgetelementptr_instruction_nindices(%s,%u)\n", parsed_relation, I.first.c_str(), I.second->getNumIndices());
+        
+        // TODO: use iterator
+        for(unsigned i = 0 ; i < I.second->getNumIndices(); i ++){
+            sprintf(parsed_relation, "%sgetelementptr_instruction_index(%s,%d,%s)\n", parsed_relation, I.first.c_str(), i, I.second->getOperand(i)->getName().str().c_str());
+        }
+        
+    }
 }
 
 
@@ -1089,6 +1234,13 @@ void IRManager::get_conversion_insts(char * parsed_domain, char * parsed_relatio
         printf("\t%s_id: %s, value: %s\n", op_type.c_str(), I.first.c_str(), I.second->getOperand(0)->getNameOrAsOperand().c_str());
         printf("\t%s_id: %s, src type: %s\n", op_type.c_str(), I.first.c_str(), get_value_type(I.second->getSrcTy()).c_str());
         printf("\t%s_id: %s, value: %s\n", op_type.c_str(), I.first.c_str(), get_value_type(I.second->getDestTy()).c_str());
+    }
+    for(auto I : conversion_inst_ref){
+        sprintf(parsed_domain, "%s_instruction(%s)\n", parsed_domain, I.first.c_str());
+        string op_type = I.second->getOpcodeName();
+        sprintf(parsed_relation, "%s%s_instruction_from(%s,%s)\n", parsed_relation, op_type.c_str(), I.first.c_str(), I.second->getOperand(0)->getNameOrAsOperand().c_str());
+        sprintf(parsed_relation, "%s%s_instruction_from_type(%s,%s)\n", parsed_relation, op_type.c_str(), I.first.c_str(), get_value_type(I.second->getSrcTy()).c_str());
+        sprintf(parsed_relation, "%s%s_instruction_to_type(%s,%s)\n", parsed_relation, op_type.c_str(), I.first.c_str(), get_value_type(I.second->getDestTy()).c_str());
     }
 }
 
@@ -1173,6 +1325,83 @@ void IRManager::get_other_insts(char * parsed_domain, char * parsed_relation){
         printf("\t\tid: %s, calling conv: %u\n", I.first.c_str(), I.second->getCallingConv());
         printf("\t\tid: %s, calling signature: %s\n", I.first.c_str(), func_type.c_str());
         printf("\t\tid: %s, calling method: %s\n", I.first.c_str(), I.second->isIndirectCall()?"indirect":"direct");
+
+    }
+
+
+
+    for(auto I : icmp_inst_ref){
+        sprintf(parsed_domain, "%sicmp_instruction(%s)\n", parsed_domain, I.first.c_str());
+        sprintf(parsed_relation, "%sicmp_instruction_condition(%s,%s)\n", parsed_relation, I.first.c_str(), I.second->getOperand(0)->getNameOrAsOperand().c_str());
+        sprintf(parsed_relation, "%sicmp_instruction_first_operand(%s,%s)\n", parsed_relation, I.first.c_str(), I.second->getOperand(2)->getNameOrAsOperand().c_str());
+        sprintf(parsed_relation, "%sicmp_instruction_second_operand(%s,%s)\n", parsed_relation, I.first.c_str(), I.second->getOperand(3)->getNameOrAsOperand().c_str());
+    }
+    for(auto I : fcmp_inst_ref){
+        sprintf(parsed_domain, "%sfcmp_instruction(%s)\n", parsed_domain, I.first.c_str());
+        sprintf(parsed_relation, "%sfcmp_instruction_condition(%s,%s)\n", parsed_relation, I.first.c_str(), I.second->getOperand(0)->getNameOrAsOperand().c_str());
+        sprintf(parsed_relation, "%sfcmp_instruction_first_operand(%s,%s)\n", parsed_relation, I.first.c_str(), I.second->getOperand(2)->getNameOrAsOperand().c_str());
+        sprintf(parsed_relation, "%sfcmp_instruction_second_operand(%s,%s)\n", parsed_relation, I.first.c_str(), I.second->getOperand(3)->getNameOrAsOperand().c_str());
+    }
+    for(auto I : phi_inst_ref){
+        sprintf(parsed_domain, "%sphi_instruction(%s)\n", parsed_domain, I.first.c_str());
+        sprintf(parsed_relation, "%sphi_instruction_type(%s,%s)\n", parsed_relation, I.first.c_str(), get_value_type(I.second->getType()).c_str());
+        sprintf(parsed_relation, "%sphi_instruction_npairs(%s,%u)\n", parsed_relation, I.first.c_str(), I.second->getNumOperands()/2);
+        for(unsigned int i = 0 ; i < I.second->getNumOperands()/2 ; i++){
+            // not sure if correct
+            sprintf(parsed_relation, "%sphi_instruction_pair_val(%s,%d,%s)\n", parsed_relation, I.first.c_str(), i, I.second->getOperand(2*i+1)->getNameOrAsOperand().c_str());
+            sprintf(parsed_relation, "%sphi_instruction_pair_label(%s,%d,%s)\n", parsed_relation, I.first.c_str(), i, I.second->getOperand(2*i+2)->getNameOrAsOperand().c_str());
+        }
+    }
+    for(auto I : sel_inst_ref){
+        sprintf(parsed_domain, "%sselect_instruction(%s)\n", parsed_domain, I.first.c_str());
+        sprintf(parsed_relation, "%sselect_instruction_condition(%s,%s)\n", parsed_relation, I.first.c_str(), I.second->getOperand(0)->getNameOrAsOperand().c_str());
+        sprintf(parsed_relation, "%sselect_instruction_true(%s,%s)\n", parsed_relation, I.first.c_str(), I.second->getTrueValue()->getNameOrAsOperand().c_str());
+        sprintf(parsed_relation, "%sselect_instruction_false(%s,%s)\n", parsed_relation, I.first.c_str(), I.second->getFalseValue()->getNameOrAsOperand().c_str());
+    }
+    for(auto I : va_arg_inst_ref){
+        sprintf(parsed_domain, "%sva_arg_instruction(%s)\n", parsed_domain, I.first.c_str());
+        sprintf(parsed_relation, "%sva_arg_instruction_type(%s,%s)\n", parsed_relation, I.first.c_str(), get_value_type(I.second->getType()).c_str());
+        sprintf(parsed_relation, "%sva_arg_instruction_va_list(%s,%s)\n", parsed_relation, I.first.c_str(), I.second->getPointerOperand()->getNameOrAsOperand().c_str());
+    }
+    for(auto I : call_inst_ref){
+        //string call_func_signature = "";
+        sprintf(parsed_domain, "%scall_instruction(%s)\n", parsed_domain, I.first.c_str());
+        sprintf(parsed_relation, "%scall_instruction_function(%s,%s)\n", parsed_relation, I.first.c_str(), I.second->getCalledFunction()->getNameOrAsOperand().c_str());
+        if(I.second->isTailCall())
+            sprintf(parsed_relation, "%scall_instruction_tail(%s)\n", parsed_relation, I.first.c_str());
+        sprintf(parsed_relation, "%scall_instruction_return_type(%s,%s)\n", parsed_relation, I.first.c_str(), get_value_type(I.second->getCalledFunction()->getReturnType()).c_str());
+        for(auto J : I.second->getCalledFunction()->getAttributes().getAttributes(llvm::AttributeList::FunctionIndex)){
+            sprintf(parsed_relation, "%scall_instruction_fn_attribute(%s,%s)\n", parsed_relation, I.first.c_str(), J.getAsString().c_str());
+        }
+        for(auto J : I.second->getCalledFunction()->getAttributes().getAttributes(llvm::AttributeList::ReturnIndex)){
+            sprintf(parsed_relation, "%scall_instruction_return_attribute(%s,%s)\n", parsed_relation, I.first.c_str(), J.getAsString().c_str());
+            //call_func_signature += get_value_type(I.second->getCalledFunction()->getReturnType());
+        }
+        unsigned int param_num = I.second->arg_size();
+        for(unsigned j = 0 ; j < param_num ; j++){
+            sprintf(parsed_relation, "%scall_instruction_arg(%s,%u,%s)\n", parsed_relation, I.first.c_str(), j, I.second->getArgOperand(j)->getNameOrAsOperand().c_str());
+            for(auto J : I.second->getCalledFunction()->getAttributes().getAttributes(j+1)){
+                sprintf(parsed_relation, "%scall_instruction_param_attribute(%s,%u,%s)\n", parsed_relation, I.first.c_str(), j, J.getAsString().c_str());
+            }
+            /*
+            if(j == 0){
+                call_func_signature += "(";
+            }
+            else{
+                call_func_signature += " ";
+            }
+            call_func_signature += get_value_type(I.second->getArgOperand(j)->getType());
+            if(j == param_num - 1){
+                call_func_signature += ")";
+            }
+            */
+            //string streaming maybe more efficient
+            
+        }
+        std::string func_type = formatv("{0}", * (I.second->getFunctionType()));
+        sprintf(parsed_relation, "%scall_instruction_calling_convention(%s,%u)\n", parsed_relation, I.first.c_str(), I.second->getCallingConv());
+        sprintf(parsed_relation, "%scall_instruction_signature(%s,%s)\n", parsed_relation, I.first.c_str(), func_type.c_str());
+        sprintf(parsed_relation, "%s%s_call_instruction(%s)\n", parsed_relation, I.second->isIndirectCall()?"indirect":"direct", I.first.c_str());
 
     }
 }

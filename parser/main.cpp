@@ -33,7 +33,7 @@ int main(int argc, char** argv) {
     char parsed_domain[100000];
     char parsed_relation[100000];
     irm->get_function_names(parsed_domain, parsed_relation);
-    irm->get_cfg_contents(parsed_domain, parsed_relation);
+    irm->buid_controlflow_rels();
     irm->get_types(parsed_domain, parsed_relation);
     irm->get_global_var(parsed_domain, parsed_relation);
     irm->get_functions(parsed_domain, parsed_relation);

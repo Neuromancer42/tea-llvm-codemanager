@@ -1,9 +1,12 @@
 //
 // Created by Yifan Chen on 2023/1/12.
 //
+// Contributors: Yifan Chen, Tianyu Zhang
 
 #ifndef TEA_LLVM_CODEMANAGER_IRMANAGER_H
 #define TEA_LLVM_CODEMANAGER_IRMANAGER_H
+
+#include "trgt.h"
 
 #include <llvm/IR/Module.h>
 #include <vector>
@@ -21,16 +24,13 @@ namespace tea {
     class IRManager {
     private:
         std::string name;
-        std::string name1;
-        std::string name2;
-        std::string name3;
-        std::string name4;
-        unsigned int name5;
-        unsigned int name6;
+        std::unique_ptr<llvm::Module> module;
         // containing cfg index
         std::vector<std::pair<std::string,std::string> > cfg;
-        std::map<std::string,llvm::BasicBlock*> cfg_map;
+        std::map<std::string,llvm::BasicBlock*> bb_map;
+        std::map<llvm::BasicBlock*, std::string> rev_bb_map;
         std::map<std::string,llvm::Instruction*> inst_map;
+        std::map<llvm::Instruction*, std::string> rev_inst_map;
         std::map<std::string,int> bb_inum;
         std::unique_ptr<llvm::LLVMContext> ctx;
         std::map<std::string,llvm::GlobalValue*> global_ref;
@@ -80,16 +80,12 @@ namespace tea {
 
         std::map<std::string, int> imm_dom_ref;
 
-
-
-        std::unique_ptr<llvm::Module> mod;
-
     public:
         IRManager(const std::string& name, std::unique_ptr<llvm::Module> mod);
         explicit IRManager(const std::string& filename);
 
         static std::string get_value_type(llvm::Type* a);
-        static std::string get_inst_id(llvm::Instruction *i, std::map<std::string, llvm::Instruction*> inst_m);
+        static std::string get_inst_id(llvm::Instruction *i, const std::map<std::string, llvm::Instruction*>& inst_m);
         static std::string get_ordering_kind(llvm::AtomicOrdering ao);
         static std::string get_conv_kind(llvm::CallingConv::ID id);
         static std::string get_visibility_string(llvm::GlobalValue::VisibilityTypes gv_ty);
@@ -97,7 +93,7 @@ namespace tea {
         static std::string get_mode_string(llvm::GlobalValue::ThreadLocalMode gv_ty);
         std::string get_name();
         void get_function_names(char * parsed_domain, char * parsed_relation);
-        void get_cfg_contents(char * parsed_domain, char * parsed_relation);
+        void buid_controlflow_rels();
         void get_types(char * parsed_domain, char * parsed_relation);
         void get_global_var(char * parsed_domain, char * parsed_relation);
         void get_aliases(char * parsed_domain, char * parsed_relation);
@@ -112,18 +108,15 @@ namespace tea {
         void get_other_insts(char * parsed_domain, char * parsed_relation);
 
         // TODO: traverse the module, generating doms&rels
-    };
-    class CFGManager {
-    private:
-        int id;
-        llvm::BasicBlock *bb;
-        llvm::Instruction *entry_inst;
-        llvm::Instruction *exit_inst;
-        std::vector<llvm::BasicBlock> succbb;
-        std::vector<llvm::BasicBlock> predbb;
-
     public:
-        CFGManager(llvm::BasicBlock &b) ;   
+        ProgramDom dom_B {"B", "basic blocks"};
+        ProgramDom dom_P {"P", "instructions"};
+        ProgramDom dom_T {"T", "llvm types"};
+        ProgramRel rel_basicblock_entry;
+        ProgramRel rel_basicblock_exit;
+        ProgramRel rel_basicblock_pred;
+        ProgramRel rel_instruction_basicblock;
+        ProgramRel rel_instruction_next;
     };
 }
 #endif //TEA_LLVM_CODEMANAGER_IRMANAGER_H

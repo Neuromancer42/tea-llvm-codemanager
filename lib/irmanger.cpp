@@ -1,14 +1,17 @@
 //
 // Created by Yifan Chen on 2023/1/12.
 //
+// Contributors: Yifan Chen, Tianyu Zhang
 
 #include "irmanager.h"
+
 #include <llvm/IR/Module.h>
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/Support/SourceMgr.h>
 #include <llvm/IRReader/IRReader.h>
 #include <llvm/IR/CFG.h>
 #include <llvm/IR/IRBuilder.h>
+
 #include <iterator>
 
 using namespace tea;
@@ -17,304 +20,128 @@ using namespace llvm;
 
 IRManager::IRManager(const string& name, std::unique_ptr<llvm::Module> mod) {
     this->name = name;
-    this->mod = move(mod);
-}   
-
-string IRManager::get_value_type(llvm::Type *t){
-    switch(t->getTypeID()){
-        case llvm::Type::HalfTyID:
-        return "float";
-        //printf("    pointer:id:%s, component type:float\n",i.first.c_str()); 
-        break;
-        case llvm::Type::BFloatTyID:
-        return "float";
-        //printf("    pointer:id:%s, component type:float\n",i.first.c_str()); 
-        break;
-        case llvm::Type::FloatTyID:
-        return "float";
-        //printf("    pointer:id:%s, component type:float\n",i.first.c_str()); 
-        break;
-        case llvm::Type::DoubleTyID:
-        return "float";
-        //printf("    pointer:id:%s, component type:float\n",i.first.c_str()); 
-        break;
-        case llvm::Type::X86_FP80TyID:
-        return "float";
-        //printf("    pointer:id:%s, component type:float\n",i.first.c_str()); 
-        break;
-        case llvm::Type::FP128TyID:
-        return "float";
-        //printf("    pointer:id:%s, component type:float\n",i.first.c_str()); 
-        break;
-        case llvm::Type::PPC_FP128TyID:
-        return "float";
-        //printf("    pointer:id:%s, component type:float\n",i.first.c_str()); 
-        break;
-        case llvm::Type::VoidTyID:
-        return "void";
-        //printf("    pointer:id:%s, component type:void\n",i.first.c_str()); 
-        break;
-        case llvm::Type::LabelTyID:
-        return "label";
-        //printf("    pointer:id:%s, component type:label\n",i.first.c_str()); 
-        break;
-        case llvm::Type::FunctionTyID:
-        return "function";
-        break;
-        case llvm::Type::MetadataTyID:
-        return "metadata";
-        //printf("    pointer:id:%s, component type:metadata\n",i.first.c_str()); 
-        break;
-        case llvm::Type::TokenTyID:
-        return "token";
-        //printf("    pointer:id:%s, component type:token\n",i.first.c_str()); 
-        break;
-        case llvm::Type::IntegerTyID:
-        return "integer";
-        //printf("    pointer:id:%s, component type:integer\n",i.first.c_str()); 
-        break;
-        case llvm::Type::PointerTyID:
-        return "pointer";
-        //printf("    pointer:id:%s, component type:pointer\n",i.first.c_str()); 
-        break;
-        case llvm::Type::StructTyID:
-        return "struct";
-        //printf("    pointer:id:%s, component type:struct\n",i.first.c_str()); 
-        break;
-        case llvm::Type::ArrayTyID:
-        return "array";
-        //printf("    pointer:id:%s, component type:array\n",i.first.c_str()); 
-        break;
-        case llvm::Type::FixedVectorTyID:
-        return "vector";
-        //printf("    pointer:id:%s, component type:vector\n",i.first.c_str()); 
-        break;
-        case llvm::Type::ScalableVectorTyID:
-        return "vector";
-        //printf("    pointer:id:%s, component type:vector\n",i.first.c_str()); 
-        break;
-        default:
-        printf("unknown\n");
-        return "unknown";
-        break;
-    }
-    return "";
+    this->module = std::move(mod);
 }
 
 IRManager::IRManager(const string& filename) {
     ctx = make_unique<LLVMContext>();
     SMDiagnostic diag;
-    mod = parseIRFile(filename, diag, *ctx);
-    printf("3\n");
-    /*
-    name = string(mod->getName().data());
-    name1 = string(mod->getSourceFileName().data());
-    name2 = string(mod->getTargetTriple().data());
-    name3 = string(mod->getDataLayoutStr().data());
-    name4 = string(mod->getModuleInlineAsm().data());
-    name5 = mod->getNumNamedValues();
-    std::string name6 = mod->getFunctionList().front().getName().data();
-    // name6 = mod->getMDKindID();
-    printf("getSourceFileName():\n%s\n",name1.c_str());
-    printf("getTargetTriple():\n%s\n",name2.c_str());
-    printf("getDataLayoutStr():\n%s\n",name3.c_str());
-    printf("getModuleInlineAsm():\n%s\n",name4.c_str());
-    printf("getNumNamedValues():\n%d\n",name5);
-    printf("getFunctionList():\n%s\n",name6.c_str());
-    printf("4\n");
-    */
-    llvm::Module* module = mod.get();   
-    for(llvm::Module::iterator MI = module->begin(); MI != module->end(); MI++) {
-        llvm::Function &Func = *MI;
-        string func_n = Func.getName().data();
+    module = parseIRFile(filename, diag, *ctx);
+    for(Function & Func : module->functions()) {
+        string func_n = Func.getName().str();
         func_ref.insert(make_pair(func_n, &Func));
-        //printf("%s\n",function_name.c_str());
         if(Func.isDeclaration()) {
-            printf("in decl\n");
-            llvm::GlobalValue *GV = dyn_cast<llvm::GlobalValue>(MI);
+            // TODO: where to mark Func name as global variable?
+            llvm::GlobalValue *GV = &Func;
             std::string gv_n = GV->getName().str();
             printf("global var:%s",gv_n.c_str());
             global_ref.insert(make_pair(gv_n,GV));
-            //check whether GV is an alises
-            if(auto * GA = dyn_cast<llvm::GlobalAlias>(MI)){
-                alias_ref.insert(make_pair(gv_n, GA));
-            }
+            //check whether GV is an alises TODO: (by cyf: should this be a global alias?
+//            if(llvm::isa<GlobalAlias>(Func)){
+//                alias_ref.insert(make_pair(gv_n, GA));
+//            }
         }
 
-        for(llvm::Function::iterator FI = Func.begin(); FI != Func.end(); FI++) {
-            llvm::BasicBlock &BB = *FI;
-            //llvm::BasicBlock *BBB = dyn_cast<llvm::BasicBlock>(&BB);
-            string bb_n = func_n + "-" + BB.getName().data();
+        for(BasicBlock & BB : Func) {
+            string bb_n;
+            {
+                llvm::raw_string_ostream oss(bb_n);
+                oss << func_n << '-';
+                BB.printAsOperand(oss);
+            }
             int inst_cnt = 0;
-            //cfg_map.insert(make_pair(a,BBB));
-            for(llvm::BasicBlock::iterator j = BB.begin(); j != BB.end(); j++) {
-                llvm::Instruction & Inst = *j;
-                int op_num = Inst.getNumOperands();
+            for(Instruction & Inst : BB) {
+                unsigned int op_num = Inst.getNumOperands();
                 for(int i = 0; i<op_num; i++){
                     llvm::Value & opi = *Inst.getOperand(i);
-                    printf("name:%s, ",opi.getName().str().c_str());
-                    std::string opi_name = bb_n + opi.getNameOrAsOperand().data();
+                    std::string opi_name;
+                    {
+                        llvm::raw_string_ostream oss(opi_name);
+                        opi.printAsOperand(oss); // TODO: opi.printAsOperand(oss, true, module); ?
+                    }
                     llvm::Type::TypeID opi_alloc_type = opi.getType()->getTypeID();
-                    printf("%s, ",opi_name.c_str());
                     switch(opi_alloc_type){
                         case llvm::Type::HalfTyID:
-                        printf("this is halftyid\n");
                         float_ref.insert(make_pair(opi_name, Inst.getOperand(i)));
                         break;
                         case llvm::Type::BFloatTyID:
-                        printf("this is float\n"); 
                         float_ref.insert(make_pair(opi_name, Inst.getOperand(i)));
                         break;
                         case llvm::Type::FloatTyID:
-                        printf("this is float\n"); 
                         float_ref.insert(make_pair(opi_name, Inst.getOperand(i)));
                         break;
                         case llvm::Type::DoubleTyID:
-                        printf("this is float\n"); 
                         float_ref.insert(make_pair(opi_name, Inst.getOperand(i)));
                         break;
                         case llvm::Type::X86_FP80TyID:
-                        printf("this is float\n"); 
                         float_ref.insert(make_pair(opi_name, Inst.getOperand(i)));
                         break;
                         case llvm::Type::FP128TyID:
-                        printf("this is float\n"); 
                         float_ref.insert(make_pair(opi_name, Inst.getOperand(i)));
                         break;
                         case llvm::Type::PPC_FP128TyID:
-                        printf("this is float\n"); 
                         float_ref.insert(make_pair(opi_name, Inst.getOperand(i)));
                         break;
                         case llvm::Type::VoidTyID:
-                        printf("this is void\n"); 
                         void_ref.insert(make_pair(opi_name, Inst.getOperand(i)));
                         break;
                         case llvm::Type::LabelTyID:
-                        printf("this is label\n"); 
                         label_ref.insert(make_pair(opi_name, Inst.getOperand(i)));
                         break;
                         case llvm::Type::MetadataTyID:
-                        printf("this is metadata\n"); 
                         break;
                         case llvm::Type::TokenTyID:
-                        printf("this is token\n"); 
                         break;
                         case llvm::Type::IntegerTyID:
-                        printf("this is integer\n"); 
                         int_ref.insert(make_pair(opi_name, Inst.getOperand(i)));
                         break;
                         case llvm::Type::PointerTyID:
-                        printf("this is pointer\n"); 
                         pointer_ref.insert(make_pair(opi_name, Inst.getOperand(i)));
                         break;
                         case llvm::Type::StructTyID:
-                        printf("this is struct\n"); 
                         float_ref.insert(make_pair(opi_name, Inst.getOperand(i)));
                         break;
                         case llvm::Type::ArrayTyID:
-                        printf("this is array\n"); 
                         array_ref.insert(make_pair(opi_name, Inst.getOperand(i)));
                         break;
                         case llvm::Type::FixedVectorTyID:
-                        printf("this is fixed vec\n"); 
                         break;
                         vector_ref.insert(make_pair(opi_name, Inst.getOperand(i)));
                         case llvm::Type::ScalableVectorTyID:
-                        printf("this is fixed vec\n"); 
                         break;
                         vector_ref.insert(make_pair(opi_name, Inst.getOperand(i)));
                         default:
-                        printf("something is error\n");
                         break;
                     }
                 }
-                /*
-                if(auto * Alloc = dyn_cast<llvm::AllocaInst>(&Inst)){
-                    llvm::AllocaInst & AInst = *Alloc;
-                    string alloc_name = AInst.getName().data();
-                    llvm::Type::TypeID alloc_type = AInst.getAllocatedType()->getTypeID();
-                    printf("alloc_name:%s.\n",alloc_name.c_str());
-                    printf("shit:%d\n",alloc_type);
-                    switch(alloc_type){
-                        case llvm::Type::HalfTyID:
-                        printf("this is halftyid\n");
-                        break;
-                        case llvm::Type::BFloatTyID:
-                        printf("this is float\n"); 
-                        break;
-                        case llvm::Type::FloatTyID:
-                        printf("this is float\n"); 
-                        break;
-                        case llvm::Type::DoubleTyID:
-                        printf("this is float\n"); 
-                        break;
-                        case llvm::Type::X86_FP80TyID:
-                        printf("this is float\n"); 
-                        break;
-                        case llvm::Type::FP128TyID:
-                        printf("this is float\n"); 
-                        break;
-                        case llvm::Type::PPC_FP128TyID:
-                        printf("this is float\n"); 
-                        break;
-                        case llvm::Type::VoidTyID:
-                        printf("this is void\n"); 
-                        break;
-                        case llvm::Type::LabelTyID:
-                        printf("this is label\n"); 
-                        break;
-                        case llvm::Type::MetadataTyID:
-                        printf("this is metadata\n"); 
-                        break;
-                        case llvm::Type::TokenTyID:
-                        printf("this is token\n"); 
-                        break;
-                        case llvm::Type::IntegerTyID:
-                        printf("this is integer\n"); 
-                        break;
-                        case llvm::Type::PointerTyID:
-                        printf("this is pointer\n"); 
-                        break;
-                        case llvm::Type::StructTyID:
-                        printf("this is struct\n"); 
-                        break;
-                        case llvm::Type::ArrayTyID:
-                        printf("this is array\n"); 
-                        break;
-                        case llvm::Type::FixedVectorTyID:
-                        printf("this is fixed vec\n"); 
-                        break;
-                        default:
-                        printf("something is error\n");
-                        break;
-                    }
-                }
-                this method is proved not robust
-                */
                 string inst_n = bb_n + "-" + to_string(inst_cnt);
-                inst_map.insert(make_pair(inst_n,&Inst));
+                inst_map.emplace(inst_n,&Inst);
+                rev_inst_map.emplace(&Inst, inst_n);
                 inst_cnt++;
             }
             bb_inum.insert(make_pair(bb_n,inst_cnt));
-            printf("valueid:%s\n",bb_n.c_str());
-            cfg_map.insert(make_pair(bb_n,&BB));
+            bb_map.emplace(bb_n, &BB);
+            rev_bb_map.emplace(&BB, bb_n);
             for (BasicBlock *Pred : predecessors(&BB)) {
                 string pred_func_n = Pred->getParent()->getName().data();
                 string pred_bb_n = pred_func_n + "-" + Pred->getName().data();
-                cfg.push_back(make_pair(pred_bb_n,bb_n));
+                cfg.emplace_back(pred_bb_n,bb_n);
             }
         }   
     }
 }
 
 
-string IRManager::get_inst_id(llvm::Instruction * i, std::map<std::string, llvm::Instruction*> inst_m){
-    for(auto I:inst_m){
+string IRManager::get_inst_id(llvm::Instruction * i, const std::map<std::string, llvm::Instruction*>& inst_m){
+    for(auto & I:inst_m){
         if(I.second->isSameOperationAs(i)){
             return I.first;
         }
     }
-    return i->getNameOrAsOperand();
+    string name;
+    raw_string_ostream oss(name);
+    i->printAsOperand(oss);
+    return name;
 }
 
 
@@ -323,68 +150,56 @@ string IRManager::get_name() {
 }
 
 void IRManager::get_function_names(char * parsed_domain, char * parsed_relation) {
-    SymbolTableList<llvm::Function>::iterator function_list_begin = mod->getFunctionList().begin();
-    SymbolTableList<llvm::Function>::iterator function_list_end = mod->getFunctionList().end();
+    SymbolTableList<llvm::Function>::iterator function_list_begin = module->getFunctionList().begin();
+    SymbolTableList<llvm::Function>::iterator function_list_end = module->getFunctionList().end();
     for(;function_list_begin != function_list_end; function_list_begin++){
         std::string name_fun = function_list_begin->getName().data();
-        printf("%s\n",name_fun.c_str());
+//        TODO: printf("%s\n",name_fun.c_str());
     }
 }
 
+void IRManager::buid_controlflow_rels() {
+    for(const auto & i : bb_map) {
+        // Function
+        string func_n = i.second->getParent()->getName().str();
+        string bb_n = i.first;
+        string entry_inst_n = bb_n + "-" + to_string(0);
+        // BasicBlocks
+        // basicblock_entry(bb:B, entry_inst:I)
+        rel_basicblock_entry.emplace_back(initializer_list<string>{bb_n, entry_inst_n});
 
-void IRManager::get_cfg_contents(char * parsed_domain, char * parsed_relation) {
-    for(std::map<string,llvm::BasicBlock*>::iterator i = cfg_map.begin();
-        i != cfg_map.end(); i++) {
-        printf("Basicblock:%s:\n",i->first.c_str());
-        //sprintf(parsed_domain, "Basicblock:%s:\n",i->first.c_str());
-        string Func_ID = i->second->getParent()->getName().data();
-        string ID = Func_ID + "-" + i->second->getName().data();
-        printf("basicblock_entry(");
-        sprintf(parsed_relation, "%sbasicblock_entry(", parsed_relation);
-        //llvm::Instruction & Inst1 = *i->second->begin();
-        printf("%s,%s)\n",ID.c_str(),(ID+"-"+to_string(0)).c_str());
-        sprintf(parsed_relation, "%s%s,%s)\n", parsed_relation,ID.c_str(),(ID+"-"+to_string(0)).c_str());
-        //Inst1.dump();
-        printf("basicblock_exit(");
-        sprintf(parsed_relation, "%sbasicblock_exit(", parsed_relation);
-        //llvm::Instruction & Inst2 = *i->second->rbegin();
-        printf("%s,%s)\n",ID.c_str(),(ID+"-"+to_string(bb_inum[ID]-1)).c_str());
-        sprintf(parsed_relation, "%s%s,%s)\n", parsed_relation,ID.c_str(),(ID+"-"+to_string(bb_inum[ID]-1)).c_str());
-        //Inst2.dump();
-        for(std::vector<std::pair<string,string> >::iterator v = cfg.begin() ;
-            v != cfg.end(); v++){
-            printf("%s,%s\n",v->first.c_str(),v->second.c_str());
-            sprintf(parsed_relation, "%s%s,%s\n", parsed_relation, v->first.c_str(), v->second.c_str());
-            if(v->second == ID){
-                printf("\npred_basicblock:(%s,%s)\n",v->second.c_str(),v->first.c_str());
-                //.,
-                sprintf(parsed_relation, "%spred_basicblock:(%s,%s)\n", parsed_relation, v->second.c_str(), v->first.c_str());
-            }
-        }
-        printf("instruction messages: \n");
-        int inst_cnt = 0;
-        for(llvm::BasicBlock::iterator j = i->second->begin(); j != i->second->end(); j++) {
-            //llvm::Instruction & Inst = *j;
-            printf("instruction_basicblock(%s,%s)\n",(ID+"-"+to_string(inst_cnt)).c_str(),ID.c_str());
-            sprintf(parsed_relation, "%sinstruction_basicblock(%s,%s)\n", parsed_relation, (ID+"-"+to_string(inst_cnt)).c_str(),ID.c_str());
-            //Inst.dump();
-            inst_cnt++;
-            if(inst_cnt != bb_inum[ID]-1){
-                printf("instruction_next(%s,%s)\n",(ID+"-"+to_string(inst_cnt)).c_str(),(ID+"-"+to_string(inst_cnt+1)).c_str());
-                sprintf(parsed_relation, "%sinstruction_next(%s,%s)\n", parsed_relation, (ID+"-"+to_string(inst_cnt)).c_str(),(ID+"-"+to_string(inst_cnt+1)).c_str());
+        // basicblock_exit(bb:B, exit_inst:I)
+        string exit_inst_n = bb_n + "-" + to_string(bb_inum[bb_n] - 1);
+        rel_basicblock_exit.emplace_back(initializer_list<string>{bb_n, exit_inst_n});
+
+        // instruction_next(inst:I, next:I)
+        int bb_inst_cnt = bb_inum[bb_n];
+        for(int idx = 0; idx < bb_inst_cnt; ++idx) {
+            string inst_id = bb_n+"-"+to_string(idx);
+            // instruction_basicblock(inst:I, bb:B)
+            rel_instruction_basicblock.emplace_back(initializer_list<string>{inst_id, bb_n});
+            if(idx + 1 < bb_inst_cnt){
+                string next_id = bb_n + "-" + to_string(idx + 1);
+                // instruction_next(inst_pred:I, inst_post:I)
+                rel_instruction_basicblock.emplace_back(initializer_list<string>{inst_id, next_id});
             }
         }
     }
+
+    // basicblock_pred(bb_pred:B, bb_next:B)
+    for(const auto& edge : cfg)
+        rel_basicblock_pred.emplace_back(initializer_list<string>{edge.second, edge.first});
 }
 
 
 void IRManager::get_types(char * parsed_domain, char * parsed_relation){
-    printf("void_refs: \n********************************\n");
+    /* TODO:  printf("void_refs: \n********************************\n");
     for(auto i: void_ref){
         printf("    void:id:%s\n",i.first.c_str());
         sprintf(parsed_domain, "%svoid_type(%s)\n", parsed_relation, i.first.c_str());
     }
-    printf("func_refs: \n********************************\n");
+    */
+    /* TODO:printf("func_refs: \n********************************\n");
     for(auto i: func_ref){
         sprintf(parsed_domain, "%sfn_type(%s)\n", parsed_domain, i.first.c_str());
         printf("fn_type:(%s)\n", i.first.c_str());
@@ -395,6 +210,7 @@ void IRManager::get_types(char * parsed_domain, char * parsed_relation){
             printf("    id:%s, varnum:%ld, var type:%s\n", i.first.c_str(), var, get_value_type(i.second->getArg(var)->getType()).c_str()); 
             //get arg only supports unsigned int but arg_size() returns unsigned long
         }
+        // TODO: fn_type_varargs
         if(i.second->isVarArg())
             sprintf(parsed_domain, "%sfn_type_varargs:(%s)\n", parsed_domain, i.first.c_str()); 
         sprintf(parsed_relation, "%sfn_type_return(%s,%s)\n", parsed_relation, i.first.c_str(), get_value_type((i.second->getReturnType())).c_str()); 
@@ -405,13 +221,15 @@ void IRManager::get_types(char * parsed_domain, char * parsed_relation){
         }
 
     }
-    printf("int_refs: \n********************************\n");
+    */
+    /* TODO: printf("int_refs: \n********************************\n");
     for(auto i: int_ref){
         printf("    int:id:%s, bit_width:%d\n", i.first.c_str(), i.second->getType()->getIntegerBitWidth()); 
         sprintf(parsed_domain, "%sint_type(%s)\n", parsed_domain, i.first.c_str());
         sprintf(parsed_relation, "%sint_type_len(%s,%d)\n", parsed_relation, i.first.c_str(), i.second->getType()->getIntegerBitWidth()); 
     }
-    printf("float_refs: \n********************************\n");
+     */
+    /* TODO: printf("float_refs: \n********************************\n");
     for(auto i: float_ref){
         printf("    float:id:%s, float point type:",i.first.c_str());
         sprintf(parsed_domain, "%sfloat_type(%s)\n", parsed_domain,i.first.c_str());
@@ -449,7 +267,8 @@ void IRManager::get_types(char * parsed_domain, char * parsed_relation){
             break;
         }
     }
-    printf("void_refs: \n********************************\n");
+     */
+    /* TODO: printf("void_refs: \n********************************\n");
     for(auto i: pointer_ref){
         printf("    pointer:id:%s, address space: %d\n",i.first.c_str(), i.second->getType()->getPointerAddressSpace());
         sprintf(parsed_domain, "%spointer_type(%s)\n", parsed_domain, i.first.c_str());
@@ -459,9 +278,9 @@ void IRManager::get_types(char * parsed_domain, char * parsed_relation){
             continue;
         }
         printf("    pointer:id:%s, component type:%s\n",i.first.c_str(),get_value_type(i.second->getType()).c_str());
-        
     }
-    printf("vector_refs: \n********************************\n");
+     */
+    /* TODO: printf("vector_refs: \n********************************\n");
     for(auto i: vector_ref){
         sprintf(parsed_domain, "%svector_type(%s)\n", parsed_domain, i.first.c_str());
         printf("    vector:id:%s, vector size:%d",i.first.c_str(), i.second->getType()->getNumContainedTypes());
@@ -470,20 +289,22 @@ void IRManager::get_types(char * parsed_domain, char * parsed_relation){
         sprintf(parsed_relation, "%svector_type_component(%s,%s)\n", parsed_relation, i.first.c_str(), get_value_type(i.second->getType()).c_str()); 
         
     }
-    printf("label_refs: \n********************************\n");
+     */
+    /* TODO: printf("label_refs: \n********************************\n");
     for(auto i: label_ref){
         printf("    label:id:%s\n",i.first.c_str());
         sprintf(parsed_domain, "%slabel_type(%s)\n", parsed_domain, i.first.c_str());
     }
-    printf("array_refs: \n********************************\n");
+     */
+    /* TODO: printf("array_refs: \n********************************\n");
     for(auto i: array_ref){
-        printf("    array:id:%s, size:%ld, component_type:%s\n",i.first.c_str(), i.second->getType()->getArrayNumElements(), get_value_type(i.second->getType()->getArrayElementType()).c_str());
+        printf("    array:id:%s, size:%llu, component_type:%s\n",i.first.c_str(), i.second->getType()->getArrayNumElements(), get_value_type(i.second->getType()->getArrayElementType()).c_str());
         sprintf(parsed_domain, "%sarray_type(%s)\n", parsed_domain, i.first.c_str());
-        sprintf(parsed_relation, "%sarray_type_size(%s,%ld)\n", parsed_relation, i.first.c_str(), i.second->getType()->getArrayNumElements());
+        sprintf(parsed_relation, "%sarray_type_size(%s,%llu)\n", parsed_relation, i.first.c_str(), i.second->getType()->getArrayNumElements());
         sprintf(parsed_relation, "%sarray_type_component(%s,%s)\n", parsed_relation, i.first.c_str(), get_value_type(i.second->getType()->getArrayElementType()).c_str());
-
     }
-    printf("structure_refs: \n********************************\n");
+     */
+    /* TODO: printf("structure_refs: \n********************************\n");
     for(auto i: structure_ref){
         int field_num = i.second->getType()->getStructNumElements();
         printf("    structure:id:%s, name:%s, opaque:%s, field_nums:%d\n",
@@ -551,10 +372,11 @@ void IRManager::get_types(char * parsed_domain, char * parsed_relation){
             sprintf(parsed_relation, "%sstruct_type_field(%s,%d,%s)\n", parsed_relation, i.first.c_str(), j, type_name.c_str());
         }
     }
+     */
 }
 
 void IRManager::get_global_var(char * parsed_domain, char * parsed_relation){
-    printf("global_Vars: \n********************************\n");
+    /* TODO: printf("global_Vars: \n********************************\n");
     for(auto I : global_ref){
         printf("    id:%s, ty:%s\n", I.first.c_str(), get_value_type(I.second->getType()).c_str());
         printf("    id:%s, name:%s\n", I.first.c_str(), I.first.c_str());
@@ -580,10 +402,11 @@ void IRManager::get_global_var(char * parsed_domain, char * parsed_relation){
         if(I.second->isConstantUsed())
             sprintf(parsed_relation, "%sglobal_variable_constant(%s)\n", parsed_relation, I.first.c_str());
     }
+     */
 }
 
 void IRManager::get_aliases(char * parsed_domain, char * parsed_relation){
-    printf("global_Alises: \n*******************************\n");
+    /* TODO: printf("global_Alises: \n*******************************\n");
     for(auto I : alias_ref){
         printf("\tid:%s, ty:%s\n", I.first.c_str(), get_value_type(I.second->getType()).c_str());
         printf("\tid:%s, name:%s\n", I.first.c_str(), I.second->getName().data());
@@ -600,12 +423,13 @@ void IRManager::get_aliases(char * parsed_domain, char * parsed_relation){
         sprintf(parsed_relation, "%salias_visibility(%s,%s)\n", parsed_relation, I.first.c_str(), get_visibility_string(I.second->getVisibility()).c_str());
         sprintf(parsed_relation, "%salias_aliasee(%s,%s)\n", parsed_relation, I.first.c_str(), I.second->getAliasee()->getName().data());
     }
+     */
 }
 
 
 
 void IRManager::get_functions(char * parsed_domain, char * parsed_relation) {
-    printf("functions: \n********************************\n");
+    /* TODO: printf("functions: \n********************************\n");
     for(auto I:func_ref){
         string func_type = formatv("{0}", * (I.second->getFunctionType()));
         sprintf(parsed_domain, "%sfunction(%s)", parsed_domain, I.first.c_str());
@@ -639,7 +463,7 @@ void IRManager::get_functions(char * parsed_domain, char * parsed_relation) {
             default:
             printf("\tsomething is error.\n");
         }
-        printf("\tid:%s, alignment:%ld\n", I.first.c_str(), I.second->getAlignment());
+        printf("\tid:%s, alignment:%llu\n", I.first.c_str(), I.second->getAlignment());
         printf("\tid:%s, gc:%s\n", I.first.c_str(), I.second->hasGC()?I.second->getGC().c_str():"no gc");
         //what exactly personally function is?
         printf("\tid:%s, personally function:%s\n", I.first.c_str(), I.second->hasPersonalityFn()?I.second->getPersonalityFn()->getName().data():"no personality fn");
@@ -659,7 +483,7 @@ void IRManager::get_functions(char * parsed_domain, char * parsed_relation) {
 
 
 
-        sprintf(parsed_relation, "%sfunction_alignment(%s,%ld)\n", parsed_relation, I.first.c_str(), I.second->getAlignment());
+        sprintf(parsed_relation, "%sfunction_alignment(%s,%llu)\n", parsed_relation, I.first.c_str(), I.second->getAlignment());
         if(I.second->hasGC())
             sprintf(parsed_relation, "%sid:%s, gc:%s\n", I.first.c_str(), parsed_relation, I.second->getGC().c_str());
         //what exactly personally function is?
@@ -688,10 +512,12 @@ void IRManager::get_functions(char * parsed_domain, char * parsed_relation) {
         }
         sprintf(parsed_relation, "%sfunction_nparams(%s,%ld)\n", parsed_relation, I.first.c_str(), I.second->arg_size());
     }
+     */
 }
 
 
 void IRManager::parse_insts(){
+    /* TODO: Instructions
     for(auto Inst:inst_map){
         //terminate inst
         if(auto * Ret = dyn_cast<llvm::ReturnInst>(Inst.second)){
@@ -776,12 +602,15 @@ void IRManager::parse_insts(){
             va_arg_inst_ref.insert(make_pair(Inst.first, VaArg));
         }
     }
+     */
 }
 
 void IRManager::get_terminate_insts(char * parsed_domain, char * parsed_relation){
+    // TODO: terminate instructions
     printf("terminater_insts: \n********************************\n");
     printf("\treturn_insts: \n\t********************************\n");
-    for(auto I : ret_inst_ref){
+    /* TODO: return instructions
+    for(const auto& I : ret_inst_ref){
         printf("\t\tid: %s\n", I.first.c_str());
         if(auto ret = I.second->getReturnValue()){
             printf("\t\tid: %s, ret: %s\n", I.first.c_str(), get_inst_id(dyn_cast<llvm::Instruction>(ret), inst_map).c_str());
@@ -790,8 +619,7 @@ void IRManager::get_terminate_insts(char * parsed_domain, char * parsed_relation
             printf("\t\tid: %s, ret: null\n", I.first.c_str());
         }
     }
-
-    for(auto I : ret_inst_ref){
+    for(const auto& I : ret_inst_ref){
         sprintf(parsed_domain, "%sret_instruction(%s)\n", parsed_domain, I.first.c_str());
         if(auto ret = I.second->getReturnValue()){
             sprintf(parsed_relation, "%sret_instruction_val(%s,%s)\n", parsed_relation, I.first.c_str(), get_inst_id(dyn_cast<llvm::Instruction>(ret), inst_map).c_str());
@@ -800,7 +628,8 @@ void IRManager::get_terminate_insts(char * parsed_domain, char * parsed_relation
             sprintf(parsed_relation, "%sret_instruction_void(%s)\n", parsed_relation, I.first.c_str());
         }
     }
-
+*/
+    /* TODO: branch instructions
     printf("\tbranch_insts: \n\t********************************\n");
     for(auto I : br_inst_ref){
         printf("\t\tid: %s\n", I.first.c_str());
@@ -817,7 +646,6 @@ void IRManager::get_terminate_insts(char * parsed_domain, char * parsed_relation
             printf("\t\tid: %s, false flag: %s\n", I.first.c_str(), get_inst_id(dyn_cast<llvm::Instruction>(dest), inst_map).c_str());
         }
     }
-
 
     for(auto I : br_inst_ref){
         sprintf(parsed_domain, "%sbr_instruction(%s)\n", parsed_domain, I.first.c_str());
@@ -836,7 +664,8 @@ void IRManager::get_terminate_insts(char * parsed_domain, char * parsed_relation
             sprintf(parsed_relation, "%sbr_uncond_dest(%s,%s)\n", parsed_domain, I.first.c_str(), get_inst_id(dyn_cast<llvm::Instruction>(dest), inst_map).c_str());
         }
     }
-
+*/
+    /* TODO: switch instructions
     printf("\tswitch_insts: \n\t********************************\n");
     for(auto I : switch_inst_ref){
         printf("\t\tid: %s\n", I.first.c_str());
@@ -854,7 +683,6 @@ void IRManager::get_terminate_insts(char * parsed_domain, char * parsed_relation
             printf("\t\t\tid:%s, case: %d, value: %s\n", I.first.c_str(), i, caseval_i->getName().str().c_str());
         }
     }
-
     for(auto I : switch_inst_ref){
         sprintf(parsed_domain, "%sswitch_instruction(%s)\n", parsed_domain, I.first.c_str());
         llvm::Instruction * Inst = dyn_cast<llvm::Instruction>(I.second->getCondition());
@@ -871,6 +699,8 @@ void IRManager::get_terminate_insts(char * parsed_domain, char * parsed_relation
             sprintf(parsed_relation, "%sswitch_instruction_case_value(%s,%d,%s)\n", parsed_relation, I.first.c_str(), i, caseval_i->getName().str().c_str());
         }
     }
+     */
+    /* TODO: indirecte_branch_insts
     printf("\ttindirect_branch_insts: \n\t********************************\n");
     for(auto I : inbr_inst_ref){
         printf("\t\tid: %s\n", I.first.c_str());
@@ -882,8 +712,6 @@ void IRManager::get_terminate_insts(char * parsed_domain, char * parsed_relation
             printf("\t\t\tid: %s, dest: %d, label: %s\n", I.first.c_str(), i, get_inst_id(dyn_cast<llvm::Instruction>(addr_i), inst_map).c_str());
         }
     }
-
-
     for(auto I : inbr_inst_ref){
         sprintf(parsed_domain, "%sindirectbr_instruction(%s)\n", parsed_domain, I.first.c_str());
         sprintf(parsed_relation, "%sindirectbr_instruction_address(%s,%s)\n", parsed_relation, I.first.c_str(), I.second->getAddress()->getName().str().c_str());
@@ -894,81 +722,26 @@ void IRManager::get_terminate_insts(char * parsed_domain, char * parsed_relation
             sprintf(parsed_relation, "%sindirectbr_instruction_label(%s,%d,%s)\n", parsed_relation, I.first.c_str(), i, get_inst_id(dyn_cast<llvm::Instruction>(addr_i), inst_map).c_str());
         }
     }
-
-
+*/
+/* TODO unreachable_insts
     printf("\tunreachable_insts: \n\t********************************\n");
     for(auto I : unre_inst_ref){
         printf("\t\tid: %s\n",I.first.c_str());
     }
-
     for(auto I : unre_inst_ref){
         printf(parsed_domain, "unreachable_instruction(%s)\n", parsed_domain, I.first.c_str());
     }
+    */
 }
 
 void IRManager::get_binary_insts(char * parsed_domain, char * parsed_relation){
-    printf("binary_insts: \n********************************\n");
+    /* TODO: printf("binary_insts: \n********************************\n");
     for(auto I : binary_inst_ref){
         std::string opcode = I.second->getOpcodeName();
         printf("\t%s_inst_id: %s\n", opcode.c_str(), I.first.c_str());
         printf("\t%s_inst_id: %s, first_op: %s\n", opcode.c_str(), I.first.c_str(), I.second->getOperand(0)->getNameOrAsOperand().c_str());
         printf("\t%s_inst_id: %s, second_op: %s\n", opcode.c_str(), I.first.c_str(), I.second->getOperand(1)->getNameOrAsOperand().c_str());
-        /* temply deletedxxxxxxxxxxxxxxxxxx
-        switch(I.second->getOpcodeName()){
-            case llvm::Instruction::Add:
-            opcode = "add";
-            break;
-            case llvm::Instruction::FAdd:
-            opcode = "add";
-            break;
-            case llvm::Instruction::Sub:
-            opcode = "add";
-            break;
-            case llvm::Instruction::FSub:
-            opcode = "add";
-            break;
-            case llvm::Instruction::Mul:
-            opcode = "add";
-            break;
-            case llvm::Instruction::FMul:
-            opcode = "add";
-            break;
-            case llvm::Instruction::UDiv:
-            opcode = "add";
-            break;
-            case llvm::Instruction::SDiv:
-            opcode = "add";
-            break;
-            case llvm::Instruction::FDiv:
-            opcode = "add";
-            break;
-            case llvm::Instruction::URem:
-            opcode = "add";
-            break;
-            case llvm::Instruction::SRem:
-            opcode = "add";
-            break;
-            case llvm::Instruction::FRem:
-            break;
-            case llvm::Instruction::Shl:
-            break;
-            case llvm::Instruction::LShr:
-            break;
-            case llvm::Instruction::AShr:
-            break;
-            case llvm::Instruction::And:
-            break;
-            case llvm::Instruction::Or:
-            break;
-            case llvm::Instruction::Xor:
-            break;
-            default:
-            printf("something is wrong\n");
-            break;
-        }
-        */
     }
-
 
     for(auto I : binary_inst_ref){
         std::string opcode = I.second->getOpcodeName();
@@ -976,11 +749,13 @@ void IRManager::get_binary_insts(char * parsed_domain, char * parsed_relation){
         printf(parsed_relation, "%s%s_instruction_first_operand(%s,%s)\n", parsed_relation, opcode.c_str(), I.first.c_str(), I.second->getOperand(0)->getNameOrAsOperand().c_str());
         printf(parsed_relation, "%s%s_instruction_second_operand(%s,%s)\n", parsed_relation, opcode.c_str(), I.first.c_str(), I.second->getOperand(1)->getNameOrAsOperand().c_str());
     }
+     */
 }
 
 void IRManager::get_vector_insts(char * parsed_domain, char * parsed_relation){
     printf("vector_insts: \n********************************\n");
     printf("\textract_element_insts: \n********************************\n");
+    /* TODO: vector_insts
     for(auto I : ex_ele_inst_ref){
         printf("\t\tid: %s\n", I.first.c_str());
         //whether the vector name should use get name or get name or as operand is doubtful
@@ -1032,10 +807,12 @@ void IRManager::get_vector_insts(char * parsed_domain, char * parsed_relation){
         sprintf(parsed_relation, "%sshufflevector_instruction_second_vector(%s,%s)\n", parsed_relation, I.first.c_str(), I.second->getOperand(1)->getName().str().c_str());
         sprintf(parsed_relation, "%sshufflevector_instruction_index(%s,%s)\n", parsed_relation, I.first.c_str(), I.second->getOperand(2)->getNameOrAsOperand().c_str());
     }
-
+*/
 }
 
 void IRManager::get_aggregate_insts(char * parsed_domain, char * parsed_relation){
+    // TODO: aggregate_insts
+    /*
     printf("vector_insts: \n********************************\n");
     printf("\textract_element_insts: \n********************************\n");
     for(auto I : ex_val_inst_ref){
@@ -1081,21 +858,23 @@ void IRManager::get_aggregate_insts(char * parsed_domain, char * parsed_relation
         }
         
     }
+     */
 }
 
 void IRManager::get_memory_insts(char * parsed_domain, char * parsed_relation){
+    /* TODO: memory_insts
     printf("memory_insts: \n********************************\n");
     printf("\talloca_insts: \n********************************\n");
     for(auto I : alloc_inst_ref){
         printf("\t\tid: %s\n", I.first.c_str());
-        printf("\t\tid: %s, align: %ld\n", I.first.c_str(), I.second->getAlign().value());
+        printf("\t\tid: %s, align: %llu\n", I.first.c_str(), I.second->getAlign().value());
         printf("\t\tid: %s, size: %s\n", I.first.c_str(), I.second->getArraySize()->getNameOrAsOperand().c_str());
         printf("\t\tid: %s, type: %s\n", I.first.c_str(), get_value_type(I.second->getAllocatedType()).c_str());
     }
     printf("\tload_insts: \n********************************\n");
     for(auto I : load_inst_ref){
         printf("\t\tid: %s\n", I.first.c_str());
-        printf("\t\tid: %s, align: %ld\n", I.first.c_str(), I.second->getAlign().value());
+        printf("\t\tid: %s, align: %llu\n", I.first.c_str(), I.second->getAlign().value());
         //the output is a enum class, turn into str if needed
         printf("\t\tid: %s, ordering: %s\n", I.first.c_str(), get_ordering_kind(I.second->getOrdering()).c_str());
         printf("\t\tid: %s, volatile: %s\n", I.first.c_str(), I.second->isVolatile()?"true":"false");
@@ -1104,7 +883,7 @@ void IRManager::get_memory_insts(char * parsed_domain, char * parsed_relation){
     printf("\tstore_insts: \n********************************\n");
     for(auto I : store_inst_ref){
         printf("\t\tid: %s\n", I.first.c_str());
-        printf("\t\tid: %s, align: %ld\n", I.first.c_str(), I.second->getAlign().value());
+        printf("\t\tid: %s, align: %llu\n", I.first.c_str(), I.second->getAlign().value());
         //the output is a enum class, turn into str if needed
         printf("\t\tid: %s, ordering: %s\n", I.first.c_str(), get_ordering_kind(I.second->getOrdering()).c_str());
         printf("\t\tid: %s, volatile: %s\n", I.first.c_str(), I.second->isVolatile()?"true":"false");
@@ -1120,7 +899,7 @@ void IRManager::get_memory_insts(char * parsed_domain, char * parsed_relation){
     printf("\tcmpxarg_insts: \n********************************\n");
     for(auto I : cmpx_inst_ref){
         printf("\t\tid: %s\n", I.first.c_str());
-        printf("\t\tid: %s, align: %ld\n", I.first.c_str(), I.second->getAlign().value());
+        printf("\t\tid: %s, align: %llu\n", I.first.c_str(), I.second->getAlign().value());
         //the output is a enum class, turn into str if needed
         printf("\t\tid: %s, succ ordering: %s\n", I.first.c_str(), get_ordering_kind(I.second->getSuccessOrdering()).c_str());
         printf("\t\tid: %s, fail ordering: %s\n", I.first.c_str(), get_ordering_kind(I.second->getFailureOrdering()).c_str());
@@ -1151,20 +930,20 @@ void IRManager::get_memory_insts(char * parsed_domain, char * parsed_relation){
         for(int i = 0 ; i < I.second->getNumIndices(); i ++){
             printf("\t\t\tid: %s. indice index: %d, val: %s\n", I.first.c_str(), i, I.second->get)
         }
-        */
+        /
     }
 
 
 
     for(auto I : alloc_inst_ref){
         sprintf(parsed_domain, "%salloca_instruction(%s)\n", parsed_domain, I.first.c_str());
-        sprintf(parsed_relation, "%salloca_instruction_alignment(%s,%ld)\n", parsed_relation, I.first.c_str(), I.second->getAlign().value());
+        sprintf(parsed_relation, "%salloca_instruction_alignment(%s,%llu)\n", parsed_relation, I.first.c_str(), I.second->getAlign().value());
         sprintf(parsed_relation, "%salloca_instruction_size(%s,%s)\n", parsed_relation, I.first.c_str(), I.second->getArraySize()->getNameOrAsOperand().c_str());
         sprintf(parsed_relation, "%salloca_instruction_type(%s,%s)\n", parsed_relation, I.first.c_str(), get_value_type(I.second->getAllocatedType()).c_str());
     }
     for(auto I : load_inst_ref){
         sprintf(parsed_domain, "%sload_instruction(%s)\n", parsed_domain, I.first.c_str());
-        sprintf(parsed_relation, "%sload_instruction_alignment(%s,%ld)\n", parsed_relation, I.first.c_str(), I.second->getAlign().value());
+        sprintf(parsed_relation, "%sload_instruction_alignment(%s,%llu)\n", parsed_relation, I.first.c_str(), I.second->getAlign().value());
         //the output is a enum class, turn into str if needed
         sprintf(parsed_relation, "%sload_instruction_ordering(%s,%s)\n", parsed_relation, I.first.c_str(), get_ordering_kind(I.second->getOrdering()).c_str());
         if(I.second->isVolatile())
@@ -1173,7 +952,7 @@ void IRManager::get_memory_insts(char * parsed_domain, char * parsed_relation){
     }
     for(auto I : store_inst_ref){
         sprintf(parsed_domain, "%sstore_instruction(%s)\n", parsed_domain, I.first.c_str());
-        sprintf(parsed_relation, "%sstore_instruction_alignment(%s,%ld)\n", parsed_relation, I.first.c_str(), I.second->getAlign().value());
+        sprintf(parsed_relation, "%sstore_instruction_alignment(%s,%llu)\n", parsed_relation, I.first.c_str(), I.second->getAlign().value());
         //the output is a enum class, turn into str if needed
         sprintf(parsed_relation, "%sstore_instruction_ordering(%s,%s)\n", parsed_relation, I.first.c_str(), get_ordering_kind(I.second->getOrdering()).c_str());
         sprintf(parsed_relation, "%sstore_instruction_volatile(%s,%s)\n", parsed_relation, I.first.c_str(), I.second->isVolatile()?"true":"false");
@@ -1222,12 +1001,13 @@ void IRManager::get_memory_insts(char * parsed_domain, char * parsed_relation){
         }
         
     }
+    */
 }
 
 
 
 void IRManager::get_conversion_insts(char * parsed_domain, char * parsed_relation){
-    printf("conversion_insts: \n********************************\n");
+    /* TODO: printf("conversion_insts: \n********************************\n");
     for(auto I : conversion_inst_ref){
         printf("\tid: %s\n", I.first.c_str());
         string op_type = I.second->getOpcodeName();
@@ -1242,11 +1022,12 @@ void IRManager::get_conversion_insts(char * parsed_domain, char * parsed_relatio
         sprintf(parsed_relation, "%s%s_instruction_from_type(%s,%s)\n", parsed_relation, op_type.c_str(), I.first.c_str(), get_value_type(I.second->getSrcTy()).c_str());
         sprintf(parsed_relation, "%s%s_instruction_to_type(%s,%s)\n", parsed_relation, op_type.c_str(), I.first.c_str(), get_value_type(I.second->getDestTy()).c_str());
     }
+     */
 }
 
 
 void IRManager::get_other_insts(char * parsed_domain, char * parsed_relation){
-    printf("other_insts: \n********************************\n");
+    /* TODO printf("other_insts: \n********************************\n");
     printf("\ticmp_insts: \n\t********************************\n");
     for(auto I : icmp_inst_ref){
         printf("\t\tid: %s\n", I.first.c_str());
@@ -1317,7 +1098,7 @@ void IRManager::get_other_insts(char * parsed_domain, char * parsed_relation){
             if(j == param_num - 1){
                 call_func_signature += ")";
             }
-            */
+            /
             //string streaming maybe more efficient
             
         }
@@ -1394,7 +1175,7 @@ void IRManager::get_other_insts(char * parsed_domain, char * parsed_relation){
             if(j == param_num - 1){
                 call_func_signature += ")";
             }
-            */
+            /
             //string streaming maybe more efficient
             
         }
@@ -1404,8 +1185,91 @@ void IRManager::get_other_insts(char * parsed_domain, char * parsed_relation){
         sprintf(parsed_relation, "%s%s_call_instruction(%s)\n", parsed_relation, I.second->isIndirectCall()?"indirect":"direct", I.first.c_str());
 
     }
+     */
 }
 
+
+string IRManager::get_value_type(llvm::Type *t){
+    // TODO: refine this
+    switch(t->getTypeID()){
+        case llvm::Type::HalfTyID:
+            return "float";
+            //printf("    pointer:id:%s, component type:float\n",i.first.c_str());
+            break;
+        case llvm::Type::BFloatTyID:
+            return "float";
+            //printf("    pointer:id:%s, component type:float\n",i.first.c_str());
+            break;
+        case llvm::Type::FloatTyID:
+            return "float";
+            //printf("    pointer:id:%s, component type:float\n",i.first.c_str());
+            break;
+        case llvm::Type::DoubleTyID:
+            return "float";
+            //printf("    pointer:id:%s, component type:float\n",i.first.c_str());
+            break;
+        case llvm::Type::X86_FP80TyID:
+            return "float";
+            //printf("    pointer:id:%s, component type:float\n",i.first.c_str());
+            break;
+        case llvm::Type::FP128TyID:
+            return "float";
+            //printf("    pointer:id:%s, component type:float\n",i.first.c_str());
+            break;
+        case llvm::Type::PPC_FP128TyID:
+            return "float";
+            //printf("    pointer:id:%s, component type:float\n",i.first.c_str());
+            break;
+        case llvm::Type::VoidTyID:
+            return "void";
+            //printf("    pointer:id:%s, component type:void\n",i.first.c_str());
+            break;
+        case llvm::Type::LabelTyID:
+            return "label";
+            //printf("    pointer:id:%s, component type:label\n",i.first.c_str());
+            break;
+        case llvm::Type::FunctionTyID:
+            return "function";
+            break;
+        case llvm::Type::MetadataTyID:
+            return "metadata";
+            //printf("    pointer:id:%s, component type:metadata\n",i.first.c_str());
+            break;
+        case llvm::Type::TokenTyID:
+            return "token";
+            //printf("    pointer:id:%s, component type:token\n",i.first.c_str());
+            break;
+        case llvm::Type::IntegerTyID:
+            return "integer";
+            //printf("    pointer:id:%s, component type:integer\n",i.first.c_str());
+            break;
+        case llvm::Type::PointerTyID:
+            return "pointer";
+            //printf("    pointer:id:%s, component type:pointer\n",i.first.c_str());
+            break;
+        case llvm::Type::StructTyID:
+            return "struct";
+            //printf("    pointer:id:%s, component type:struct\n",i.first.c_str());
+            break;
+        case llvm::Type::ArrayTyID:
+            return "array";
+            //printf("    pointer:id:%s, component type:array\n",i.first.c_str());
+            break;
+        case llvm::Type::FixedVectorTyID:
+            return "vector";
+            //printf("    pointer:id:%s, component type:vector\n",i.first.c_str());
+            break;
+        case llvm::Type::ScalableVectorTyID:
+            return "vector";
+            //printf("    pointer:id:%s, component type:vector\n",i.first.c_str());
+            break;
+        default:
+            printf("unknown\n");
+            return "unknown";
+            break;
+    }
+    return "";
+}
 
 string IRManager::get_conv_kind(llvm::CallingConv::ID id){
     return "";
@@ -1535,3 +1399,4 @@ string IRManager::get_mode_string(llvm::GlobalValue::ThreadLocalMode gv_ty){
     }
     return ty_string;
 }
+

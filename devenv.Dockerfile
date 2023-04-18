@@ -64,10 +64,6 @@ RUN cmake /opt/llvm-project-${llvm_version}.src/llvm/ \
 
 FROM base AS grpc-builder
 
-#ARG bazel_version=6.1.1
-#RUN wget -q https://github.com/bazelbuild/bazel/releases/download/${bazel_version}/bazel-${bazel_version}-installer-linux-x86_64.sh \
-#    && bash bazel-${bazel_version}-installer-linux-x86_64.sh
-
 ARG grpc_version=v1.54.0
 WORKDIR /tmp
 RUN git config --global http.proxy $HTTP_PROXY && git config --global https.proxy $HTTPS_PROXY

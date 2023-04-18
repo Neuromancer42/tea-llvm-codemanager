@@ -2,13 +2,16 @@ cmake_minimum_required(VERSION 3.15)
 project(tea_llvm_codemanager)
 
 # Note: match the build environment for LLVM
-set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS ON)
+
+set(CMAKE_CXX_FLAGS "-Wall")
+set(CMAKE_CXX_FLAGS_DEBUG "-g")
+set(CMAKE_CXX_FLAGS_RELEASE "-O3")
+
 add_compile_options("-fno-rtti")
 add_compile_options("-fno-exceptions")
-
-add_compile_options("-Werror" "-Wall")
 
 find_package(LLVM REQUIRED CONFIG HINTS "${LLVM_DIR}")
 message(STATUS "Found LLVM ${LLVM_PACKAGE_VERSION}")
@@ -41,7 +44,7 @@ target_link_libraries(irmanager_standalone irmanager_lib)
 add_executable(irmanager_parser parser/main.cpp)
 target_link_libraries(irmanager_parser irmanager_lib)
 
-option(BUILD_RPC "build RPC server" OFF)
+option(BUILD_RPC "build RPC server" ON)
 if(BUILD_RPC)
     find_package(Protobuf REQUIRED)
     message(STATUS "Found Protobuf ${Protobuf_VERSION}")

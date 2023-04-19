@@ -5,15 +5,6 @@
 
 #include "irmanager.h"
 
-#include <llvm/IR/Module.h>
-#include <llvm/IR/LLVMContext.h>
-#include <llvm/Support/SourceMgr.h>
-#include <llvm/IRReader/IRReader.h>
-#include <llvm/IR/CFG.h>
-#include <llvm/IR/IRBuilder.h>
-
-#include <iterator>
-
 using namespace tea;
 using namespace std;
 using namespace llvm;
@@ -23,23 +14,41 @@ IRManager::IRManager(const string& name, std::unique_ptr<llvm::Module> mod) {
     this->module = std::move(mod);
 }
 
-IRManager::IRManager(const string& filename) {
-    ctx = make_unique<LLVMContext>();
-    SMDiagnostic diag;
-    module = parseIRFile(filename, diag, *ctx);
-    for(Function & Func : module->functions()) {
+void IRManager::collect_element_maps() {
+    // TODO collect constants in ctx_impl?
+    // TODO collect named_values in ctx_impl->ValueNames?
+    for (auto & GVar : module->globals()) {
+        collect_value(&GVar);
+        collect_type(GVar.getValueType());
+        if (GVar.hasInitializer())
+            collect_value(GVar.getInitializer());
+        uint64_t align = GVar.getAlign().valueOrOne().value();
+        const_sizealign_set.insert(align);
+    }
+    // TODO: should global_alias and global_ifunc be eliminated after linking?
+    for (auto & GAlias : module->getAliasList()) {
+        collect_value(&GAlias);
+        collect_type(GAlias.getValueType());
+        if (Value * aliasee = GAlias.getAliasee())
+            collect_value(aliasee);
+    }
+    for (auto & IFunc : module->getIFuncList()) {
+        collect_value(&IFunc);
+        collect_type(IFunc.getValueType());
+    }
+    for(auto & Func : module->functions()) {
         string func_n = Func.getName().str();
-        func_ref.insert(make_pair(func_n, &Func));
-        if(Func.isDeclaration()) {
-            // TODO: where to mark Func name as global variable?
-            llvm::GlobalValue *GV = &Func;
-            std::string gv_n = GV->getName().str();
-            printf("global var:%s",gv_n.c_str());
-            global_ref.insert(make_pair(gv_n,GV));
-            //check whether GV is an alises TODO: (by cyf: should this be a global alias?
-//            if(llvm::isa<GlobalAlias>(Func)){
-//                alias_ref.insert(make_pair(gv_n, GA));
-//            }
+        func_map.emplace(func_n, &Func);
+        rev_func_map.emplace(&Func, func_n);
+        collect_value(&Func);
+        collect_type(Func.getFunctionType());
+        // TODO check this?
+        for (auto & FUse : Func.operands()) {
+            collect_value(FUse.get());
+        }
+
+        for (auto & Arg : Func.args()) {
+            collect_value(&Arg);
         }
 
         for(BasicBlock & BB : Func) {
@@ -49,1227 +58,1464 @@ IRManager::IRManager(const string& filename) {
                 oss << func_n << '-';
                 BB.printAsOperand(oss);
             }
-            int inst_cnt = 0;
+            bb_map.emplace(bb_n, &BB);
+            rev_bb_map.emplace(&BB, bb_n);
+            size_t inst_cnt = 0;
             for(Instruction & Inst : BB) {
-                unsigned int op_num = Inst.getNumOperands();
-                for(int i = 0; i<op_num; i++){
-                    llvm::Value & opi = *Inst.getOperand(i);
-                    std::string opi_name;
-                    {
-                        llvm::raw_string_ostream oss(opi_name);
-                        opi.printAsOperand(oss); // TODO: opi.printAsOperand(oss, true, module); ?
+                // slightly larger than necessary, but it's ok
+//                if (Inst.getNumOperands() > max_z)
+//                    max_z = Inst.getNumOperands();
+                if (auto * pSwitch = dyn_cast<SwitchInst>(&Inst)) {
+                    unsigned num_cases = pSwitch->getNumCases();
+                    if (num_cases > max_z)
+                        max_z = num_cases;
+                    for (auto & case_handle : pSwitch->cases()) {
+                        ConstantInt * pCaseVal = case_handle.getCaseValue();
+                        string val_str;
+                        raw_string_ostream raw_os(val_str);
+                        raw_os << pCaseVal->getValue();
+                        rev_constint_map.emplace(pCaseVal, val_str);
                     }
-                    llvm::Type::TypeID opi_alloc_type = opi.getType()->getTypeID();
-                    switch(opi_alloc_type){
-                        case llvm::Type::HalfTyID:
-                        float_ref.insert(make_pair(opi_name, Inst.getOperand(i)));
-                        break;
-                        case llvm::Type::BFloatTyID:
-                        float_ref.insert(make_pair(opi_name, Inst.getOperand(i)));
-                        break;
-                        case llvm::Type::FloatTyID:
-                        float_ref.insert(make_pair(opi_name, Inst.getOperand(i)));
-                        break;
-                        case llvm::Type::DoubleTyID:
-                        float_ref.insert(make_pair(opi_name, Inst.getOperand(i)));
-                        break;
-                        case llvm::Type::X86_FP80TyID:
-                        float_ref.insert(make_pair(opi_name, Inst.getOperand(i)));
-                        break;
-                        case llvm::Type::FP128TyID:
-                        float_ref.insert(make_pair(opi_name, Inst.getOperand(i)));
-                        break;
-                        case llvm::Type::PPC_FP128TyID:
-                        float_ref.insert(make_pair(opi_name, Inst.getOperand(i)));
-                        break;
-                        case llvm::Type::VoidTyID:
-                        void_ref.insert(make_pair(opi_name, Inst.getOperand(i)));
-                        break;
-                        case llvm::Type::LabelTyID:
-                        label_ref.insert(make_pair(opi_name, Inst.getOperand(i)));
-                        break;
-                        case llvm::Type::MetadataTyID:
-                        break;
-                        case llvm::Type::TokenTyID:
-                        break;
-                        case llvm::Type::IntegerTyID:
-                        int_ref.insert(make_pair(opi_name, Inst.getOperand(i)));
-                        break;
-                        case llvm::Type::PointerTyID:
-                        pointer_ref.insert(make_pair(opi_name, Inst.getOperand(i)));
-                        break;
-                        case llvm::Type::StructTyID:
-                        float_ref.insert(make_pair(opi_name, Inst.getOperand(i)));
-                        break;
-                        case llvm::Type::ArrayTyID:
-                        array_ref.insert(make_pair(opi_name, Inst.getOperand(i)));
-                        break;
-                        case llvm::Type::FixedVectorTyID:
-                        break;
-                        vector_ref.insert(make_pair(opi_name, Inst.getOperand(i)));
-                        case llvm::Type::ScalableVectorTyID:
-                        break;
-                        vector_ref.insert(make_pair(opi_name, Inst.getOperand(i)));
-                        default:
-                        break;
-                    }
+                } else if (auto * pInBr = dyn_cast<IndirectBrInst>(&Inst)) {
+                    unsigned num_labels = pInBr->getNumDestinations();
+                    if (num_labels > max_z)
+                        max_z = num_labels;
+                } else if (auto * pInvk = dyn_cast<InvokeInst>(&Inst)) {
+                    unsigned num_args = pInvk->arg_size();
+                    if (num_args > max_z)
+                        max_z = num_args;
+                } else if (auto * pCallBr = dyn_cast<CallBrInst>(&Inst)) {
+                    unsigned num_args = pCallBr->arg_size();
+                    if (num_args > max_z)
+                        max_z = num_args;
+                } else if (auto * pExtVal = dyn_cast<ExtractValueInst>(&Inst)) {
+                    unsigned num_indices = pExtVal->getNumIndices();
+                    if (num_indices > max_z)
+                        max_z = num_indices;
+                } else if (auto * pInsVal = dyn_cast<InsertValueInst>(&Inst)) {
+                    unsigned num_indices = pInsVal->getNumIndices();
+                    if (num_indices > max_z)
+                        max_z = num_indices;
+                } else if (auto * pAlloca = dyn_cast<AllocaInst>(&Inst)) {
+                    Align align = pAlloca->getAlign();
+                    uint64_t align_int = align.value();
+                    const_sizealign_set.insert(align_int);
+                    collect_type(pAlloca->getAllocatedType());
+                } else if (auto * pLoad = dyn_cast<LoadInst>(&Inst)) {
+                    Align align = pLoad->getAlign();
+                    uint64_t align_int = align.value();
+                    const_sizealign_set.insert(align_int);
+                } else if (auto * pStore = dyn_cast<StoreInst>(&Inst)) {
+                    Align align = pStore->getAlign();
+                    uint64_t align_int = align.value();
+                    const_sizealign_set.insert(align_int);
+                } else if (auto * pGep = dyn_cast<GetElementPtrInst>(&Inst)) {
+                    unsigned num_indices = pGep->getNumIndices();
+                    if (num_indices > max_z)
+                        max_z = num_indices;
+                    collect_type(pGep->getSourceElementType());
+                } else if (auto * pPhi = dyn_cast<PHINode>(&Inst)) {
+                    unsigned num_pairs = pPhi->getNumIncomingValues();
+                    if (num_pairs > max_z)
+                        max_z = num_pairs;
+                } else if (auto * pCall = dyn_cast<CallInst>(&Inst)) {
+                    unsigned num_args = pCall->arg_size();
+                    if (num_args > max_z)
+                        max_z = num_args;
+                } else if (auto * pLandingPad = dyn_cast<LandingPadInst>(&Inst)) {
+                    unsigned num_clses = pLandingPad->getNumClauses();
+                    if (num_clses > max_z)
+                        max_z = num_clses;
+                } else if (auto * pCatchPad = dyn_cast<CatchPadInst>(&Inst)) {
+                    unsigned num_clses = pCatchPad->getNumArgOperands();
+                    if (num_clses > max_z)
+                        max_z = num_clses;
+                } else if (auto * pCleanupPad = dyn_cast<CleanupPadInst>(&Inst)) {
+                    unsigned num_args = pCleanupPad->getNumArgOperands();
+                    if (num_args > max_z)
+                        max_z = num_args;
+                }
+                if (Inst.hasName() || !Inst.getType()->isVoidTy()) {
+                    collect_value(&Inst);
+                }
+                unsigned op_num = Inst.getNumOperands();
+                for(unsigned i = 0; i < op_num; i++){
+                    llvm::Value & Op = *Inst.getOperand(i);
+                    collect_value(&Op);
                 }
                 string inst_n = bb_n + "-" + to_string(inst_cnt);
                 inst_map.emplace(inst_n,&Inst);
                 rev_inst_map.emplace(&Inst, inst_n);
                 inst_cnt++;
             }
-            bb_inum.insert(make_pair(bb_n,inst_cnt));
-            bb_map.emplace(bb_n, &BB);
-            rev_bb_map.emplace(&BB, bb_n);
-            for (BasicBlock *Pred : predecessors(&BB)) {
-                string pred_func_n = Pred->getParent()->getName().data();
-                string pred_bb_n = pred_func_n + "-" + Pred->getName().data();
-                cfg.emplace_back(pred_bb_n,bb_n);
-            }
-        }   
-    }
-}
-
-
-string IRManager::get_inst_id(llvm::Instruction * i, const std::map<std::string, llvm::Instruction*>& inst_m){
-    for(auto & I:inst_m){
-        if(I.second->isSameOperationAs(i)){
-            return I.first;
         }
     }
-    string name;
-    raw_string_ostream oss(name);
-    i->printAsOperand(oss);
-    return name;
+
+    assert(rev_type_map.size() == type_map.size() && "duplicate type namings exist");
+    assert(rev_value_map.size() == value_map.size() && "duplicate value namings exist");
+    assert(rev_bb_map.size() == bb_map.size() && "duplicate bb namings exist");
+    assert(rev_inst_map.size() == inst_map.size() && "duplicate inst namings exist");
+    assert(rev_func_map.size() == func_map.size() && "duplicate func namings exist");
 }
 
+void IRManager::collect_type(llvm::Type * pTy) {
+    if (rev_type_map.find(pTy) != rev_type_map.end())
+        return;
+    string ty_name;
+    raw_string_ostream raw_os(ty_name);
+    pTy->print(raw_os, true, true);
+    rev_type_map.emplace(pTy, ty_name);
+    type_map.emplace(ty_name, pTy);
+    if (auto * pFnTy = dyn_cast<FunctionType>(pTy)) {
+        unsigned num_args = pFnTy->getNumParams();
+        if (num_args > max_z)
+            max_z = num_args;
+    } else if (auto * pStTy = dyn_cast<StructType>(pTy)) {
+        unsigned num_fields = pStTy->getNumElements();
+        if (num_fields > max_z)
+            max_z = num_fields;
+    } else if (auto * pFixVecTy = dyn_cast<FixedVectorType>(pTy)) {
+        uint64_t vec_len = pFixVecTy->getNumElements();
+        const_sizealign_set.insert(vec_len);
+    } else if (auto * pScaleVecTy = dyn_cast<ScalableVectorType>(pTy)) {
+        uint64_t min_vec_len = pScaleVecTy->getMinNumElements();
+        const_sizealign_set.insert(min_vec_len);
+    } else if (auto * pArrTy = dyn_cast<ArrayType>(pTy)) {
+        uint64_t arr_len = pArrTy->getNumElements();
+        const_sizealign_set.insert(arr_len);
+    }
+    for (auto * sub_ty : pTy->subtypes()) {
+        collect_type(sub_ty);
+    }
+}
+
+void IRManager::collect_value(llvm::Value * pVal) {
+    // skip basicblock operands for control flow instructions (e.g. br / switch / e.t.c.)
+    if (isa<BasicBlock>(pVal))
+        return;
+    if (rev_value_map.find(pVal) != rev_value_map.end())
+        return;
+    string val_name;
+    raw_string_ostream raw_os(val_name);
+    if (auto * pInst = dyn_cast<Instruction>(pVal)) {
+        Function * pFunc = pInst->getFunction();
+        raw_os << rev_func_map[pFunc] << "-";
+    } else if (auto * pArg = dyn_cast<Argument>(pVal)) {
+        Function * pFunc = pArg->getParent();
+        raw_os << rev_func_map[pFunc] << "-";
+    }
+    pVal->printAsOperand(raw_os);
+    value_map.emplace(val_name, pVal);
+    rev_value_map.emplace(pVal, val_name);
+    collect_type(pVal->getType());
+    if (isa<Constant>(pVal)) {
+        if (auto *pConstInt = dyn_cast<ConstantInt>(pVal)) {
+            string const_str;
+            raw_string_ostream raw_os(const_str);
+            raw_os << pConstInt->getValue();
+            rev_constint_map.emplace(pConstInt, const_str);
+        } else if (auto *pConstFP = dyn_cast<ConstantFP>(pVal)) {
+            string const_str;
+            raw_string_ostream raw_os(const_str);
+            pConstFP->getValue().print(raw_os);
+            rev_constfp_map.emplace(pConstFP, const_str);
+        } else if (auto *pStruct = dyn_cast<ConstantStruct>(pVal)) {
+            unsigned num_fields = pStruct->getNumOperands();
+            if (num_fields > max_z)
+                max_z = num_fields;
+        } else if (auto *pArr = dyn_cast<ConstantArray>(pVal)) {
+            uint64_t arr_len = pArr->getNumOperands();
+            const_sizealign_set.insert(arr_len);
+        } else if (auto *pVec = dyn_cast<ConstantVector>(pVal)) {
+            uint64_t arr_len = pVec->getNumOperands();
+            const_sizealign_set.insert(arr_len);
+        } else if (auto *pDataArr = dyn_cast<ConstantDataArray>(pVal)) {
+            uint64_t arr_len = pDataArr->getNumElements();
+            const_sizealign_set.insert(arr_len);
+            for (unsigned idx = 0; idx < arr_len; ++idx) {
+                Constant *pElem = pDataArr->getElementAsConstant(idx);
+                collect_value(pElem);
+            }
+        } else if (auto *pDataVec = dyn_cast<ConstantDataVector>(pVal)) {
+            uint64_t vec_len = pDataVec->getNumElements();
+            const_sizealign_set.insert(vec_len);
+            for (unsigned idx = 0; idx < vec_len; ++idx) {
+                Constant *pElem = pDataVec->getElementAsConstant(idx);
+                collect_value(pElem);
+            }
+        } else if (auto *pZero = dyn_cast<ConstantAggregateZero>(pVal)) {
+            const_sizealign_set.insert(0);
+        }
+        // special handling of components of constants
+        if (!isa<GlobalValue>(pVal)) {
+            auto *pConst = cast<Constant>(pVal);
+            for (Value *pSub: pConst->operands())
+                collect_value(pSub);
+        }
+    }
+}
 
 string IRManager::get_name() {
     return name;
 }
 
-void IRManager::get_function_names(char * parsed_domain, char * parsed_relation) {
-    SymbolTableList<llvm::Function>::iterator function_list_begin = module->getFunctionList().begin();
-    SymbolTableList<llvm::Function>::iterator function_list_end = module->getFunctionList().end();
-    for(;function_list_begin != function_list_end; function_list_begin++){
-        std::string name_fun = function_list_begin->getName().data();
-//        TODO: printf("%s\n",name_fun.c_str());
+void IRManager::build_type_rels() {
+    // TODO: build rev_type_map somewhere
+    for (const auto& type_pair : rev_type_map) {
+        Type* pTy = type_pair.first;
+        const string& ty_str = type_pair.second;
+        switch (pTy->getTypeID()) {
+            case Type::VoidTyID: {
+                // void_type(ty:T)
+                rel_void_type.add({ty_str});
+                break;
+            }
+            case Type::FunctionTyID: {
+                // fn_type(ty:T)
+                rel_fn_type.add({ty_str});
+
+                auto *pFnTy = cast<FunctionType>(pTy);
+
+                // fn_type_varargs(ty:T)
+                if (pFnTy->isVarArg())
+                    rel_fn_type_varargs.add({ty_str});
+
+                // fn_type_return(fn_ty:T, ret_ty:T)
+                Type *pRetTy = pFnTy->getReturnType();
+                rel_fn_type_return.add({ty_str, rev_type_map[pRetTy]});
+
+                // fn_type_nparams(fn_ty:T, n:Z)
+                unsigned nparams = pFnTy->getNumParams();
+                rel_fn_type_nparams.add({ty_str, to_string(nparams)});
+                // fn_type_param(fn_ty:T, i:Z, param_ty:T)
+                for (unsigned idx = 0; idx < nparams; ++idx) {
+                    Type * pParamTy = pFnTy->getParamType(idx);
+                    rel_fn_type_param.add(
+                            {ty_str, to_string(idx), rev_type_map[pParamTy]}
+                    );
+                }
+                break;
+            }
+            case Type::IntegerTyID: {
+                // integer_type(ty:T)
+                rel_integer_type.add({ty_str});
+                // IntegerType * pIntTy = cast<IntegerType>(pTy);
+                break;
+            }
+            case Type::HalfTyID:
+            case Type::BFloatTyID:
+            case Type::FloatTyID:
+            case Type::DoubleTyID:
+            case Type::X86_FP80TyID:
+            case Type::FP128TyID:
+            case Type::PPC_FP128TyID: {
+                // floatingpoint_type(ty:T)
+                rel_floatingpoint_type.add({ty_str});
+                break;
+            }
+            case Type::PointerTyID:
+            case Type::DXILPointerTyID: { //TODO: check more about DXILPointerType
+                // pointer_type(ty:T)
+                rel_pointer_type.add({ty_str});
+
+                auto *pPtrTy = cast<PointerType>(pTy);
+
+                // pointer_type_opaque(ty:T)
+                // pointer_type_component(ty:T, pointee_ty:T)
+                if (pPtrTy->isOpaque()) {
+                    rel_pointer_type_opaque.add({ty_str});
+                } else {
+                    Type * pElemTy = pPtrTy->getPointerElementType();
+                    rel_pointer_type_component.add({ty_str, rev_type_map[pElemTy]});
+                }
+                // pointer_type_addr_space(ty:T, addr:AS)
+                unsigned addr_space = pPtrTy->getAddressSpace();
+                rel_pointer_type_addrspace.add({ty_str, to_string(addr_space)});
+                break;
+            }
+            case Type::FixedVectorTyID:
+            case Type::ScalableVectorTyID: {
+                // vector_type(ty:T)
+                rel_vector_type.add({ty_str});
+
+                // vector_type_size(ty:T, size:C)
+                if (isa<FixedVectorType>(pTy)) {
+                    unsigned size = cast<FixedVectorType>(pTy)->getNumElements();
+                    rel_vector_type_size.add({ty_str, to_string(size)});
+                }
+                // vector_type_min_size(ty:T, size:C)
+                if (isa<ScalableVectorType>(pTy)) {
+                    unsigned min_size = cast<ScalableVectorType>(pTy)->getMinNumElements();
+                    rel_vector_type_min_size.add({ty_str, to_string(min_size)});
+                }
+                // vector_type_component(ty:T, comp_ty:T)
+                Type * pElemType = cast<VectorType>(pTy)->getElementType();
+                rel_vector_type_component.add({ty_str, rev_type_map[pElemType]});
+                break;
+            }
+            case Type::ArrayTyID: {
+                // array_type(ty:T)
+                rel_array_type.add({ty_str});
+
+                auto *pArrTy = cast<ArrayType>(pTy);
+
+                // array_type_size(ty:T, size:C)
+                uint64_t size = pArrTy->getNumElements();
+                rel_array_type_size.add({ty_str, to_string(size)});
+
+                // array_type_component(ty:T, comp_ty:T)
+                Type * pElemTy = pArrTy->getElementType();
+                rel_array_type_component.add({ty_str, rev_type_map[pElemTy]});
+                break;
+            }
+            case Type::StructTyID: {
+                // struct_type(ty:T)
+                rel_struct_type.add({ty_str});
+
+                auto *pStructTy = cast<StructType>(pTy);
+
+                // struct_type_name(ty:T, name:AS) // TODO: learn more about struct namings
+                if (pStructTy->hasName()) {
+                    rel_struct_type_name.add({ty_str, pStructTy->getName().str()});
+                }
+                // opaque_struct_type(ty:T) // TODO: learn more about opaque structs
+                if (pStructTy->isOpaque()) {
+                    rel_opaque_struct_type.add({ty_str});
+                }
+                // struct_type_nfields(ty:T, n:Z)
+                unsigned num_fields = pStructTy->getNumElements();
+                rel_struct_type_nfields.add({ty_str, to_string(num_fields)});
+
+                // struct_type_field(ty:T, i:Z, f_ty:T)
+                for (unsigned idx = 0; idx < num_fields; ++idx) {
+                    Type* pFieldTy = pStructTy->getElementType(idx);
+                    rel_struct_type_field.add({ty_str, to_string(idx), rev_type_map[pFieldTy]});
+                }
+                break;
+            }
+            case Type::LabelTyID: {
+                // label(ty:T)
+                rel_label.add({ty_str});
+                break;
+            }
+            case Type::TokenTyID: {
+                // token(ty:T)
+                rel_token.add({ty_str});
+                break;
+            }
+            case Type::MetadataTyID: {
+                // metadata(ty:T)
+                rel_metadata.add({ty_str});
+                break;
+            }
+            case Type::X86_MMXTyID: {
+                // x86mmx(ty:T)
+                rel_x86mmx.add({ty_str});
+                break;
+            }
+            case Type::X86_AMXTyID: {
+                // x86amx(ty:T)
+                rel_x86amx.add({ty_str});
+                break;
+            }
+        }
     }
 }
 
-void IRManager::buid_controlflow_rels() {
-    for(const auto & i : bb_map) {
-        // Function
-        string func_n = i.second->getParent()->getName().str();
-        string bb_n = i.first;
+void IRManager::build_value_rels() {
+    for (auto & value_pair : value_map) {
+        const string & val_n = value_pair.first;
+        Value * pVar = value_pair.second;
+        // variable_type(v:V, ty:T)
+        Type * pTy = pVar->getType();
+        rel_variable_type.add({val_n, rev_type_map[pTy]});
+        if (auto * pConstInt = dyn_cast<ConstantInt>(pVar)) {
+            rel_variable_const_int.add({val_n, rev_constint_map[pConstInt]});
+        } else if (auto * pConstFP = dyn_cast<ConstantFP>(pVar)) {
+            rel_variable_const_fp.add({val_n, rev_constfp_map[pConstFP]});
+        } else if (auto * pNull = dyn_cast<ConstantPointerNull>(pVar)) {
+            rel_variable_const_ptr_null.add({val_n});
+        } else if (auto * pNone = dyn_cast<ConstantTokenNone>(pVar)) {
+            rel_variable_const_token_none.add({val_n});
+        } else if (auto * pStruct = dyn_cast<ConstantStruct>(pVar)) {
+            rel_variable_const_struct.add({val_n});
+            unsigned num_fields = pStruct->getNumOperands();
+            rel_variable_const_struct_nfields.add({val_n, to_string(num_fields)});
+            for (unsigned f_idx = 0; f_idx < num_fields; ++f_idx) {
+                Constant *pOp = pStruct->getOperand(f_idx);
+                rel_variable_const_struct_field.add({val_n, to_string(f_idx), rev_value_map[pOp]});
+            }
+        } else if (auto * pArr = dyn_cast<ConstantArray>(pVar)) {
+            rel_variable_const_array.add({val_n});
+            unsigned len = pArr->getNumOperands();
+            rel_variable_const_array_len.add({val_n, to_string(len)});
+            for (unsigned idx = 0; idx < len; ++idx) {
+                Constant *pOp = pArr->getOperand(idx);
+                rel_variable_const_array_elem.add({val_n, rev_value_map[pOp]});
+            }
+        } else if (auto * pVec = dyn_cast<ConstantVector>(pVar)) {
+            rel_variable_const_vector.add({val_n});
+            unsigned len = pVec->getNumOperands();
+            rel_variable_const_vector_len.add({val_n, to_string(len)});
+            for (unsigned idx = 0; idx < len; ++idx) {
+                Constant *pOp = pVec->getOperand(idx);
+                rel_variable_const_vector_elem.add({val_n, rev_value_map[pOp]});
+            }
+        } else if (auto * pDataArr = dyn_cast<ConstantDataArray>(pVar)) {
+            rel_variable_const_array.add({val_n});
+            unsigned len = pDataArr->getNumElements();
+            rel_variable_const_array_len.add({val_n, to_string(len)});
+            for (unsigned idx = 0; idx < len; ++idx) {
+                Constant *pOp = pDataArr->getElementAsConstant(idx);
+                rel_variable_const_array_elem.add({val_n, rev_value_map[pOp]});
+            }
+        } else if (auto * pDataVec = dyn_cast<ConstantDataVector>(pVar)) {
+            rel_variable_const_vector.add({val_n});
+            unsigned len = pDataArr->getNumElements();
+            rel_variable_const_vector_len.add({val_n, to_string(len)});
+            for (unsigned idx = 0; idx < len; ++idx) {
+                Constant *pOp = pDataArr->getElementAsConstant(idx);
+                rel_variable_const_vector_elem.add({val_n, rev_value_map[pOp]});
+            }
+        } else if (auto * pAggZero = dyn_cast<ConstantAggregateZero>(pVar)) {
+            rel_variable_const_aggzero.add({val_n});
+        } else if (auto * pGlobal = dyn_cast<GlobalVariable>(pVar)) {
+            // variable_global(v:V)
+            rel_variable_global.add({val_n});
+            // variable_global_type(v:V, ty:T)
+            Type * pValueTy = pGlobal->getValueType();
+            rel_variable_global_type.add({val_n, rev_type_map[pValueTy]});
+            // variable_global_linkage(v:V)
+            GlobalValue::LinkageTypes link = pGlobal->getLinkage();
+            rel_variable_global_linkage.add({val_n, get_linkage_string(link)});
+            // variable_global_align(v:V,align:C)
+            MaybeAlign align = pGlobal->getAlign();
+            rel_variable_global_align.add({val_n, to_string(align.valueOrOne().value())});
+            // variabel_global_init(v:V, init_val:V)
+            if (pGlobal->hasInitializer()) {
+                Constant * pConst = pGlobal->getInitializer();
+                rel_variable_global_init.add({val_n, rev_value_map[pConst]});
+            }
+            //TODO not sure
+//        sprintf(parsed_relation, "%sglobal_variable_visibility(%s,%s)\n", parsed_relation, I.first.c_str(), get_visibility_string(I.second->getVisibility()).c_str());
+//        sprintf(parsed_relation, "%sglobal_variable_section(%s,%s)\n", parsed_relation, I.first.c_str(), I.second->getSection().str().c_str());
+//        sprintf(parsed_relation, "%sglobale_threadlocal_mode(%s,%s)\n", parsed_relation, I.first.c_str(), get_mode_string(I.second->getThreadLocalMode()).c_str());
+//        if(I.second->isConstantUsed())
+//            sprintf(parsed_relation, "%sglobal_variable_constant(%s)\n", parsed_relation, I.first.c_str());
+        } else if (auto * pAlias = dyn_cast<GlobalAlias>(pVar)) {
+            // variable_alias(v:V)
+            rel_variable_alias.add({val_n});
+            // variable_alias_aliasee(v:V, aliasee:V)
+            if (Value * pAliasee = pAlias->getAliasee())
+                rel_variable_alias_aliasee.add({val_n, rev_value_map[pAliasee]});
+//        sprintf(parsed_relation, "%salias_type(%s,%s)\n", parsed_relation, I.first.c_str(), get_value_type(I.second->getType()).c_str());
+//        sprintf(parsed_relation, "%salias_name(%s,%s)\n", parsed_relation, I.first.c_str(), I.second->getName().data());
+//        sprintf(parsed_relation, "%salias_linkage_type(%s,%s)\n", parsed_relation, I.first.c_str(), get_linkage_string(I.second->getLinkage()).c_str());
+//        sprintf(parsed_relation, "%salias_visibility(%s,%s)\n", parsed_relation, I.first.c_str(), get_visibility_string(I.second->getVisibility()).c_str());
+        } else if (auto * pUndef = dyn_cast<UndefValue>(pVar)) {
+            rel_variable_undef.add({val_n});
+            if (isa<PoisonValue>(pVar))
+                rel_variable_undef_poison.add({val_n});
+        } else if (auto * pIFunc = dyn_cast<GlobalIFunc>(pVar)) {
+            // variable_ifunc(v:V)
+            rel_variable_ifunc.add({val_n});
+            // variable_ifunc_resolver(v:V, m:M)
+            Function * pResolver = pIFunc->getResolverFunction();
+            rel_variable_ifunc_resolver.add({val_n, rev_func_map[pResolver]});
+        } else if (auto * pFunc = dyn_cast<Function>(pVar)) {
+            rel_variable_func.add({val_n, rev_func_map[pFunc]});
+        } else if (auto * pAddr = dyn_cast<BlockAddress>(pVar)) {
+            BasicBlock *pBB = pAddr->getBasicBlock();
+            rel_variable_blockaddr.add({val_n, rev_bb_map[pBB]});
+        } else if (auto * pConstExpr = dyn_cast<ConstantExpr>(pVar)) {
+            rel_variable_constexpr.add({val_n});
+            Instruction * pPhonyInst = pConstExpr->getAsInstruction();
+            add_op_rel(pConstExpr, pPhonyInst);
+        }
+        // TODO build constant relations
+    }
+}
+
+void IRManager::add_op_rel(llvm::Value *pRes, llvm::Instruction *pInst) {
+    if (auto * pUnary = dyn_cast<UnaryOperator>(pInst)) {
+        add_op_unary(pUnary->getOpcode(), pRes, pUnary->getOperand(0));
+    } else if (auto * pBinary = dyn_cast<BinaryOperator>(pInst)) {
+        add_op_binary(pBinary->getOpcode(), pRes, pBinary->getOperand(0), pBinary->getOperand(1));
+    } else if (auto * pExtractElem = dyn_cast<ExtractElementInst>(pInst)) {
+        Value * pBase = pExtractElem->getVectorOperand();
+        Value * pIdx = pExtractElem->getIndexOperand();
+        rel_operation_extractelement.add({rev_value_map[pRes], rev_value_map[pBase], rev_value_map[pIdx]});
+    } else if (auto * pInsertElem = dyn_cast<InsertElementInst>(pInst)) {
+        Value * pBase = pInsertElem->getOperand(0);
+        Value * pElem = pInsertElem->getOperand(1);
+        Value * pIdx = pInsertElem->getOperand(2);
+        rel_operation_insertelement.add({rev_value_map[pRes], rev_value_map[pBase], rev_value_map[pElem], rev_value_map[pIdx]});
+    } else if (auto * pShuffle = dyn_cast<ShuffleVectorInst>(pInst)) {
+        Value * pVec1 = pShuffle->getOperand(0);
+        Value * pVec2 = pShuffle->getOperand(1);
+        Value * pMask = pShuffle->getOperand(2);
+        rel_operation_shufflevector.add({rev_value_map[pRes], rev_value_map[pVec1], rev_value_map[pVec2], rev_value_map[pMask]});
+    } else if (auto * pExtractVal = dyn_cast<ExtractValueInst>(pInst)) {
+        // operation_extractvalue_base(inst:P, base:V)
+        Value * pBase = pExtractVal->getAggregateOperand();
+        rel_operation_extractvalue_base.add({rev_value_map[pRes], rev_value_map[pBase]});
+        // operation_extractvalue_nindices(inst:P, n:Z)
+        unsigned num_indices = pExtractVal->getNumIndices();
+        rel_operation_extractvalue_nindices.add({rev_value_map[pRes], to_string(num_indices)});
+        // operation_extractvalue_indice(inst:P, i:Z, id:Z)
+        for (unsigned i = 0; i < num_indices; ++i) {
+            unsigned idx = pExtractVal->getIndices()[i];
+            rel_operation_extractvalue_index.add({rev_value_map[pRes], to_string(i), to_string(idx)});
+        }
+    } else if (auto * pInsertVal = dyn_cast<InsertValueInst>(pInst)) {
+        // operation_insertvalue_base(inst:P, base:V)
+        Value * pBase = pInsertVal->getAggregateOperand();
+        rel_operation_insertvalue_base.add({rev_value_map[pRes], rev_value_map[pBase]});
+        // operation_insertvalue_elem(inst:P, elem:V)
+        Value * pElem = pInsertVal->getInsertedValueOperand();
+        rel_operation_insertvalue_elem.add({rev_value_map[pRes], rev_value_map[pElem]});
+        // operation_insertvalue_nindices(inst:P, n:Z)
+        unsigned num_indices = pInsertVal->getNumIndices();
+        rel_operation_insertvalue_nindices.add({rev_value_map[pRes], to_string(num_indices)});
+        // instruction_insertvalue_indice(inst:P, i:Z, id:Z)
+        for (unsigned i = 0; i < num_indices; ++i) {
+            unsigned idx = pInsertVal->getIndices()[i];
+            rel_operation_insertvalue_index.add({rev_value_map[pRes], to_string(i), to_string(idx)});
+        }
+    } else if (auto * pGep = dyn_cast<GetElementPtrInst>(pInst)) {
+        // operation_gep_inbounds(res:V)
+        if (pGep->isInBounds())
+            rel_operation_gep_inbounds.add({rev_value_map[pRes]});
+        // operation_gep_base(res:V, addr:V)
+        Value * pBase = pGep->getPointerOperand();
+        rel_operation_gep_base.add({rev_value_map[pRes], rev_value_map[pBase]});
+        // operation_gep_type(res:V, ty:T)
+        Type * pSrcTy = pGep->getSourceElementType();
+        rel_operation_gep_type.add({rev_value_map[pRes], rev_type_map[pSrcTy]});
+        // operation_gep_nindices(res:V, n:Z)
+        unsigned num_indices = pGep->getNumIndices();
+        rel_operation_gep_nindices.add({rev_value_map[pRes], to_string(num_indices)});
+        // operation_gep_index(res:V, i:Z, val:V)
+        Use * op_list = pGep->getOperandList();
+        rel_operation_gep_index_offset.add({rev_value_map[pRes], to_string(0), rev_value_map[op_list[0].get()]});
+        Type * pIndexedType = pSrcTy;
+        for (unsigned off_idx = 1; off_idx < num_indices; ++off_idx) {
+            Value *pOffset = op_list[off_idx].get();
+            if (auto *pStructTy = dyn_cast<llvm::StructType>(pIndexedType)) {
+                auto idx = (unsigned) cast<Constant>(pOffset)->getUniqueInteger().getZExtValue();
+                rel_operation_gep_index_field.add({rev_value_map[pRes], to_string(off_idx), to_string(idx)});
+            } else {
+                rel_operation_gep_index_offset.add({rev_value_map[pRes], to_string(off_idx), rev_value_map[pOffset]});
+            }
+            pIndexedType = GetElementPtrInst::getTypeAtIndex(pIndexedType, pOffset);
+        }
+    } else if (auto * pCast = dyn_cast<CastInst>(pInst)) {
+        add_op_cast(pCast->getOpcode(), pRes, pCast->getOperand(0), pCast->getSrcTy(), pCast->getDestTy());
+    } else if (auto * pIcmp = dyn_cast<ICmpInst>(pInst)) {
+        add_op_icmp(pIcmp->getPredicate(), pRes, pIcmp->getOperand(0), pIcmp->getOperand(1));
+    } else if (auto * pFcmp = dyn_cast<FCmpInst>(pInst)) {
+        add_op_fcmp(pFcmp->getPredicate(), pRes, pFcmp->getOperand(0), pFcmp->getOperand(1));
+    }
+}
+
+void IRManager::add_op_unary(unsigned op, Value * pRes, Value * pInner) {
+    switch (op) {
+        case Instruction::FNeg:
+//                    rel_operation_unary_expr.add({"fneg", rev_value_map[pRes], rev_value_map[pInner]});
+            rel_operation_unary_fneg.add({rev_value_map[pRes], rev_value_map[pInner]});
+            break;
+        default:
+            // TODO: warning for unknown instructions
+//                    rel_operation_unary_expr.add({"uop"+ to_string(op), rev_value_map[pRes], rev_value_map[pInner]});
+//                    rel_operation_unhandled.add({"uop"+ to_string(op)});
+            break;
+    }
+}
+
+void IRManager::add_op_binary(unsigned op, Value * pRes, Value * pLeft, Value * pRight) {
+    switch (op) {
+        case Instruction::Add:
+//                    rel_operation_binary_expr.add({"add", rev_value_map[pRes], rev_value_map[pLeft], rev_value_map[pRight]});
+            rel_operation_binary_add.add(
+                    {rev_value_map[pRes], rev_value_map[pLeft], rev_value_map[pRight]});
+            break;
+        case Instruction::FAdd:
+//                    rel_operation_binary_expr.add({"fadd", rev_value_map[pRes], rev_value_map[pLeft], rev_value_map[pRight]});
+            rel_operation_binary_fadd.add(
+                    {rev_value_map[pRes], rev_value_map[pLeft], rev_value_map[pRight]});
+            break;
+        case Instruction::Sub:
+//                    rel_operation_binary_expr.add({"sub", rev_value_map[pRes], rev_value_map[pLeft], rev_value_map[pRight]});
+            rel_operation_binary_sub.add(
+                    {rev_value_map[pRes], rev_value_map[pLeft], rev_value_map[pRight]});
+            break;
+        case Instruction::FSub:
+//                    rel_operation_binary_expr.add({"fsub", rev_value_map[pRes], rev_value_map[pLeft], rev_value_map[pRight]});
+            rel_operation_binary_fsub.add(
+                    {rev_value_map[pRes], rev_value_map[pLeft], rev_value_map[pRight]});
+            break;
+        case Instruction::Mul:
+//                    rel_operation_binary_expr.add({"mul", rev_value_map[pRes], rev_value_map[pLeft], rev_value_map[pRight]});
+            rel_operation_binary_mul.add(
+                    {rev_value_map[pRes], rev_value_map[pLeft], rev_value_map[pRight]});
+            break;
+        case Instruction::FMul:
+//                    rel_operation_binary_expr.add({"fmul", rev_value_map[pRes], rev_value_map[pLeft], rev_value_map[pRight]});
+            rel_operation_binary_fmul.add(
+                    {rev_value_map[pRes], rev_value_map[pLeft], rev_value_map[pRight]});
+            break;
+        case Instruction::UDiv:
+//                    rel_operation_binary_expr.add({"udiv", rev_value_map[pRes], rev_value_map[pLeft], rev_value_map[pRight]});
+            rel_operation_binary_udiv.add(
+                    {rev_value_map[pRes], rev_value_map[pLeft], rev_value_map[pRight]});
+            break;
+        case Instruction::SDiv:
+//                    rel_operation_binary_expr.add({"sdiv", rev_value_map[pRes], rev_value_map[pLeft], rev_value_map[pRight]});
+            rel_operation_binary_sdiv.add(
+                    {rev_value_map[pRes], rev_value_map[pLeft], rev_value_map[pRight]});
+            break;
+        case Instruction::FDiv:
+//                    rel_operation_binary_expr.add({"fdiv", rev_value_map[pRes], rev_value_map[pLeft], rev_value_map[pRight]});
+            rel_operation_binary_fdiv.add(
+                    {rev_value_map[pRes], rev_value_map[pLeft], rev_value_map[pRight]});
+            break;
+        case Instruction::URem:
+//                    rel_operation_binary_expr.add({"urem", rev_value_map[pRes], rev_value_map[pLeft], rev_value_map[pRight]});
+            rel_operation_binary_urem.add(
+                    {rev_value_map[pRes], rev_value_map[pLeft], rev_value_map[pRight]});
+            break;
+        case Instruction::SRem:
+//                    rel_operation_binary_expr.add({"srem", rev_value_map[pRes], rev_value_map[pLeft], rev_value_map[pRight]});
+            rel_operation_binary_srem.add(
+                    {rev_value_map[pRes], rev_value_map[pLeft], rev_value_map[pRight]});
+            break;
+        case Instruction::FRem:
+//                    rel_operation_binary_expr.add({"frem", rev_value_map[pRes], rev_value_map[pLeft], rev_value_map[pRight]});
+            rel_operation_binary_frem.add(
+                    {rev_value_map[pRes], rev_value_map[pLeft], rev_value_map[pRight]});
+            break;
+        case Instruction::Shl:
+//                    rel_operation_binary_expr.add({"shl", rev_value_map[pRes], rev_value_map[pLeft], rev_value_map[pRight]});
+            rel_operation_binary_shl.add(
+                    {rev_value_map[pRes], rev_value_map[pLeft], rev_value_map[pRight]});
+            break;
+        case Instruction::LShr:
+//                    rel_operation_binary_expr.add({"lshr", rev_value_map[pRes], rev_value_map[pLeft], rev_value_map[pRight]});
+            rel_operation_binary_lshr.add(
+                    {rev_value_map[pRes], rev_value_map[pLeft], rev_value_map[pRight]});
+            break;
+        case Instruction::AShr:
+//                    rel_operation_binary_expr.add({"ashr", rev_value_map[pRes], rev_value_map[pLeft], rev_value_map[pRight]});
+            rel_operation_binary_ashr.add(
+                    {rev_value_map[pRes], rev_value_map[pLeft], rev_value_map[pRight]});
+            break;
+        case Instruction::And:
+//                    rel_operation_binary_expr.add({"and", rev_value_map[pRes], rev_value_map[pLeft], rev_value_map[pRight]});
+            rel_operation_binary_and.add(
+                    {rev_value_map[pRes], rev_value_map[pLeft], rev_value_map[pRight]});
+            break;
+        case Instruction::Or:
+//                    rel_operation_binary_expr.add({"or", rev_value_map[pRes], rev_value_map[pLeft], rev_value_map[pRight]});
+            rel_operation_binary_or.add(
+                    {rev_value_map[pRes], rev_value_map[pLeft], rev_value_map[pRight]});
+            break;
+        case Instruction::Xor:
+//                    rel_operation_binary_expr.add({"xor", rev_value_map[pRes], rev_value_map[pLeft], rev_value_map[pRight]});
+            rel_operation_binary_xor.add(
+                    {rev_value_map[pRes], rev_value_map[pLeft], rev_value_map[pRight]});
+            break;
+        default:
+            // TODO: warning for unknown instructions
+//                    rel_operation_binary_expr.add({"bop"+ to_string(op), rev_value_map[pRes], rev_value_map[pLeft], rev_value_map[pRight]});
+//                    rel_operation_unhandled.add({"bop"+ to_string(op)});
+            break;
+    }
+}
+
+void IRManager::add_op_cast(unsigned op, Value * pRes, Value * pSrc, Type * pFromTy, Type * pToTy) {
+    switch (op) {
+        case Instruction::Trunc:
+            rel_operation_cast_trunc.add({rev_value_map[pRes], rev_value_map[pSrc], rev_type_map[pFromTy], rev_type_map[pToTy]});
+            break;
+        case Instruction::ZExt:
+            rel_operation_cast_zext.add({rev_value_map[pRes], rev_value_map[pSrc], rev_type_map[pFromTy], rev_type_map[pToTy]});
+            break;
+        case Instruction::SExt:
+            rel_operation_cast_sext.add({rev_value_map[pRes], rev_value_map[pSrc], rev_type_map[pFromTy], rev_type_map[pToTy]});
+            break;
+        case Instruction::FPToUI:
+            rel_operation_cast_fptoui.add({rev_value_map[pRes], rev_value_map[pSrc], rev_type_map[pFromTy], rev_type_map[pToTy]});
+            break;
+        case Instruction::FPToSI:
+            rel_operation_cast_fptosi.add({rev_value_map[pRes], rev_value_map[pSrc], rev_type_map[pFromTy], rev_type_map[pToTy]});
+            break;
+        case Instruction::UIToFP:
+            rel_operation_cast_uitofp.add({rev_value_map[pRes], rev_value_map[pSrc], rev_type_map[pFromTy], rev_type_map[pToTy]});
+            break;
+        case Instruction::SIToFP:
+            rel_operation_cast_sitofp.add({rev_value_map[pRes], rev_value_map[pSrc], rev_type_map[pFromTy], rev_type_map[pToTy]});
+            break;
+        case Instruction::FPTrunc:
+            rel_operation_cast_fptrunc.add({rev_value_map[pRes], rev_value_map[pSrc], rev_type_map[pFromTy], rev_type_map[pToTy]});
+            break;
+        case Instruction::PtrToInt:
+            rel_operation_cast_ptrtoint.add({rev_value_map[pRes], rev_value_map[pSrc], rev_type_map[pFromTy], rev_type_map[pToTy]});
+            break;
+        case Instruction::IntToPtr:
+            rel_operation_cast_inttoptr.add({rev_value_map[pRes], rev_value_map[pSrc], rev_type_map[pFromTy], rev_type_map[pToTy]});
+            break;
+        case Instruction::BitCast:
+            rel_operation_cast_bitcast.add({rev_value_map[pRes], rev_value_map[pSrc], rev_type_map[pFromTy], rev_type_map[pToTy]});
+            break;
+        case Instruction::AddrSpaceCast:
+            rel_operation_cast_addrspacecast.add({rev_value_map[pRes], rev_value_map[pSrc], rev_type_map[pFromTy], rev_type_map[pToTy]});
+            break;
+        default:
+            break;
+    }
+}
+
+void IRManager::add_op_icmp(unsigned int pred, llvm::Value *pRes, llvm::Value *pLeft, llvm::Value *pRight) {
+    switch (pred) {
+        case CmpInst::ICMP_EQ:
+            rel_operation_icmp_eq.add({rev_value_map[pRes], rev_value_map[pLeft], rev_value_map[pRight]});
+            break;
+        case CmpInst::ICMP_NE:
+            rel_operation_icmp_ne.add({rev_value_map[pRes], rev_value_map[pLeft], rev_value_map[pRight]});
+            break;
+        case CmpInst::ICMP_UGT:
+            rel_operation_icmp_ugt.add({rev_value_map[pRes], rev_value_map[pLeft], rev_value_map[pRight]});
+            break;
+        case CmpInst::ICMP_UGE:
+            rel_operation_icmp_uge.add({rev_value_map[pRes], rev_value_map[pLeft], rev_value_map[pRight]});
+            break;
+        case CmpInst::ICMP_ULT:
+            rel_operation_icmp_ult.add({rev_value_map[pRes], rev_value_map[pLeft], rev_value_map[pRight]});
+            break;
+        case CmpInst::ICMP_ULE:
+            rel_operation_icmp_ule.add({rev_value_map[pRes], rev_value_map[pLeft], rev_value_map[pRight]});
+            break;
+        case CmpInst::ICMP_SGT:
+            rel_operation_icmp_sgt.add({rev_value_map[pRes], rev_value_map[pLeft], rev_value_map[pRight]});
+            break;
+        case CmpInst::ICMP_SGE:
+            rel_operation_icmp_sge.add({rev_value_map[pRes], rev_value_map[pLeft], rev_value_map[pRight]});
+            break;
+        case CmpInst::ICMP_SLT:
+            rel_operation_icmp_slt.add({rev_value_map[pRes], rev_value_map[pLeft], rev_value_map[pRight]});
+            break;
+        case CmpInst::ICMP_SLE:
+            rel_operation_icmp_sle.add({rev_value_map[pRes], rev_value_map[pLeft], rev_value_map[pRight]});
+            break;
+        default:
+            break;
+    }
+}
+void IRManager::add_op_fcmp(unsigned int pred, llvm::Value *pRes, llvm::Value *pLeft, llvm::Value *pRight) {
+    switch (pred) {
+        case CmpInst::FCMP_FALSE:
+            rel_operation_fcmp_false.add({rev_value_map[pRes], rev_value_map[pLeft], rev_value_map[pRight]});
+            break;
+        case CmpInst::FCMP_OEQ:
+            rel_operation_fcmp_oeq.add({rev_value_map[pRes], rev_value_map[pLeft], rev_value_map[pRight]});
+            break;
+        case CmpInst::FCMP_OGT:
+            rel_operation_fcmp_ogt.add({rev_value_map[pRes], rev_value_map[pLeft], rev_value_map[pRight]});
+            break;
+        case CmpInst::FCMP_OGE:
+            rel_operation_fcmp_oge.add({rev_value_map[pRes], rev_value_map[pLeft], rev_value_map[pRight]});
+            break;
+        case CmpInst::FCMP_OLT:
+            rel_operation_fcmp_olt.add({rev_value_map[pRes], rev_value_map[pLeft], rev_value_map[pRight]});
+            break;
+        case CmpInst::FCMP_ONE:
+            rel_operation_fcmp_one.add({rev_value_map[pRes], rev_value_map[pLeft], rev_value_map[pRight]});
+            break;
+        case CmpInst::FCMP_ORD:
+            rel_operation_fcmp_ord.add({rev_value_map[pRes], rev_value_map[pLeft], rev_value_map[pRight]});
+            break;
+        case CmpInst::FCMP_UEQ:
+            rel_operation_fcmp_ueq.add({rev_value_map[pRes], rev_value_map[pLeft], rev_value_map[pRight]});
+            break;
+        case CmpInst::FCMP_UGT:
+            rel_operation_fcmp_ugt.add({rev_value_map[pRes], rev_value_map[pLeft], rev_value_map[pRight]});
+            break;
+        case CmpInst::FCMP_UGE:
+            rel_operation_fcmp_uge.add({rev_value_map[pRes], rev_value_map[pLeft], rev_value_map[pRight]});
+            break;
+        case CmpInst::FCMP_ULT:
+            rel_operation_fcmp_ult.add({rev_value_map[pRes], rev_value_map[pLeft], rev_value_map[pRight]});
+            break;
+        case CmpInst::FCMP_ULE:
+            rel_operation_fcmp_ule.add({rev_value_map[pRes], rev_value_map[pLeft], rev_value_map[pRight]});
+            break;
+        case CmpInst::FCMP_UNE:
+            rel_operation_fcmp_une.add({rev_value_map[pRes], rev_value_map[pLeft], rev_value_map[pRight]});
+            break;
+        case CmpInst::FCMP_UNO:
+            rel_operation_fcmp_uno.add({rev_value_map[pRes], rev_value_map[pLeft], rev_value_map[pRight]});
+            break;
+        case CmpInst::FCMP_TRUE:
+            rel_operation_fcmp_true.add({rev_value_map[pRes], rev_value_map[pLeft], rev_value_map[pRight]});
+            break;
+        default:
+            break;
+    }
+}
+
+void IRManager::build_controlflow_rels() {
+    for(auto & i : bb_map) {
+        const string & bb_n = i.first;
+        BasicBlock * pBB = i.second;
         string entry_inst_n = bb_n + "-" + to_string(0);
         // BasicBlocks
-        // basicblock_entry(bb:B, entry_inst:I)
-        rel_basicblock_entry.emplace_back(initializer_list<string>{bb_n, entry_inst_n});
+        size_t bb_inst_cnt = pBB->getInstList().size();
+        // basicblock_entry(bb:B, entry_inst:P)
+        rel_basicblock_entry.add({bb_n, entry_inst_n});
+        // basicblock_exit(bb:B, exit_inst:P)
+        string exit_inst_n = bb_n + "-" + to_string(bb_inst_cnt - 1);
+        rel_basicblock_exit.add({bb_n, exit_inst_n});
+        // basicblock_pred(bb_pred:B, bb_next:B)
+        for (BasicBlock * pPred : predecessors(pBB))
+            rel_basicblock_pred.add({rev_bb_map[pPred], bb_n});
 
-        // basicblock_exit(bb:B, exit_inst:I)
-        string exit_inst_n = bb_n + "-" + to_string(bb_inum[bb_n] - 1);
-        rel_basicblock_exit.emplace_back(initializer_list<string>{bb_n, exit_inst_n});
-
-        // instruction_next(inst:I, next:I)
-        int bb_inst_cnt = bb_inum[bb_n];
-        for(int idx = 0; idx < bb_inst_cnt; ++idx) {
+        for(size_t idx = 0; idx < bb_inst_cnt; ++idx) {
             string inst_id = bb_n+"-"+to_string(idx);
-            // instruction_basicblock(inst:I, bb:B)
-            rel_instruction_basicblock.emplace_back(initializer_list<string>{inst_id, bb_n});
+            // instruction_basicblock(inst:P, bb:B)
+            rel_instruction_basicblock.add({inst_id, bb_n});
             if(idx + 1 < bb_inst_cnt){
                 string next_id = bb_n + "-" + to_string(idx + 1);
                 // instruction_next(inst_pred:I, inst_post:I)
-                rel_instruction_basicblock.emplace_back(initializer_list<string>{inst_id, next_id});
+                rel_instruction_basicblock.add({inst_id, next_id});
             }
         }
     }
-
-    // basicblock_pred(bb_pred:B, bb_next:B)
-    for(const auto& edge : cfg)
-        rel_basicblock_pred.emplace_back(initializer_list<string>{edge.second, edge.first});
-}
-
-
-void IRManager::get_types(char * parsed_domain, char * parsed_relation){
-    /* TODO:  printf("void_refs: \n********************************\n");
-    for(auto i: void_ref){
-        printf("    void:id:%s\n",i.first.c_str());
-        sprintf(parsed_domain, "%svoid_type(%s)\n", parsed_relation, i.first.c_str());
-    }
-    */
-    /* TODO:printf("func_refs: \n********************************\n");
-    for(auto i: func_ref){
-        sprintf(parsed_domain, "%sfn_type(%s)\n", parsed_domain, i.first.c_str());
-        printf("fn_type:(%s)\n", i.first.c_str());
-        printf("    id:%s, ret_type:%s\n", i.first.c_str(), get_value_type((i.second->getReturnType())).c_str()); 
-        printf("    id:%s, arg_num:%ld\n", i.first.c_str(), i.second->arg_size()); 
-        printf("    id:%s, vararg:%s\n", i.first.c_str(), i.second->isVarArg()? "yes":"no"); 
-        for(long unsigned int var = 0; var < i.second->arg_size() ; var++){
-            printf("    id:%s, varnum:%ld, var type:%s\n", i.first.c_str(), var, get_value_type(i.second->getArg(var)->getType()).c_str()); 
-            //get arg only supports unsigned int but arg_size() returns unsigned long
-        }
-        // TODO: fn_type_varargs
-        if(i.second->isVarArg())
-            sprintf(parsed_domain, "%sfn_type_varargs:(%s)\n", parsed_domain, i.first.c_str()); 
-        sprintf(parsed_relation, "%sfn_type_return(%s,%s)\n", parsed_relation, i.first.c_str(), get_value_type((i.second->getReturnType())).c_str()); 
-        sprintf(parsed_relation, "%sfn_type_nparams(%s,%ld)\n", parsed_relation, i.first.c_str(), i.second->arg_size()); 
-        for(long unsigned int var = 0; var < i.second->arg_size() ; var++){
-            sprintf(parsed_relation, "%sfn_type_param(%s,%ld,%s)\n", parsed_relation, i.first.c_str(), var, get_value_type(i.second->getArg(var)->getType()).c_str()); 
-            //get arg only supports unsigned int but arg_size() returns unsigned long
-        }
-
-    }
-    */
-    /* TODO: printf("int_refs: \n********************************\n");
-    for(auto i: int_ref){
-        printf("    int:id:%s, bit_width:%d\n", i.first.c_str(), i.second->getType()->getIntegerBitWidth()); 
-        sprintf(parsed_domain, "%sint_type(%s)\n", parsed_domain, i.first.c_str());
-        sprintf(parsed_relation, "%sint_type_len(%s,%d)\n", parsed_relation, i.first.c_str(), i.second->getType()->getIntegerBitWidth()); 
-    }
-     */
-    /* TODO: printf("float_refs: \n********************************\n");
-    for(auto i: float_ref){
-        printf("    float:id:%s, float point type:",i.first.c_str());
-        sprintf(parsed_domain, "%sfloat_type(%s)\n", parsed_domain,i.first.c_str());
-        sprintf(parsed_relation, "%sfloat_type_schema(%s,", parsed_relation,i.first.c_str());
-        switch(i.second->getType()->getTypeID()){
-            case llvm::Type::HalfTyID:
-            printf("half\n");
-            sprintf(parsed_relation, "%shalf)\n", parsed_relation);
-            break;
-            case llvm::Type::BFloatTyID:
-            printf("half\n"); 
-            sprintf(parsed_relation, "%shalf)\n", parsed_relation);
-            break;
-            case llvm::Type::FloatTyID:
-            printf("float\n"); 
-            sprintf(parsed_relation, "%sfloat)\n", parsed_relation);
-            break;
-            case llvm::Type::DoubleTyID:
-            printf("double\n"); 
-            sprintf(parsed_relation, "%sdouble)\n", parsed_relation);
-            break;
-            case llvm::Type::X86_FP80TyID:
-            printf("x86_fp80\n"); 
-            sprintf(parsed_relation, "%sx86_fp80)\n", parsed_relation);
-            break;
-            case llvm::Type::FP128TyID:
-            printf("fp128\n"); 
-            sprintf(parsed_relation, "%sfp128)\n", parsed_relation);
-            break;
-            case llvm::Type::PPC_FP128TyID:
-            printf("ppc_fp128\n"); 
-            sprintf(parsed_relation, "%sppc_fp128)\n", parsed_relation);
-            break;
-            default:
-            break;
-        }
-    }
-     */
-    /* TODO: printf("void_refs: \n********************************\n");
-    for(auto i: pointer_ref){
-        printf("    pointer:id:%s, address space: %d\n",i.first.c_str(), i.second->getType()->getPointerAddressSpace());
-        sprintf(parsed_domain, "%spointer_type(%s)\n", parsed_domain, i.first.c_str());
-        sprintf(parsed_relation, "%spointer_type_addr_space(%s,%d)\n", parsed_relation, i.first.c_str(), i.second->getType()->getPointerAddressSpace());
-        if(i.second->getType()->isOpaquePointerTy()){
-            printf("this pointer is opaque.\n");
-            continue;
-        }
-        printf("    pointer:id:%s, component type:%s\n",i.first.c_str(),get_value_type(i.second->getType()).c_str());
-    }
-     */
-    /* TODO: printf("vector_refs: \n********************************\n");
-    for(auto i: vector_ref){
-        sprintf(parsed_domain, "%svector_type(%s)\n", parsed_domain, i.first.c_str());
-        printf("    vector:id:%s, vector size:%d",i.first.c_str(), i.second->getType()->getNumContainedTypes());
-        printf("    vector:id:%s, component type:%s\n",i.first.c_str(), get_value_type(i.second->getType()).c_str()); 
-        sprintf(parsed_relation, "%svector_type_size(%s,%d)\n", parsed_relation, i.first.c_str(), i.second->getType()->getNumContainedTypes());
-        sprintf(parsed_relation, "%svector_type_component(%s,%s)\n", parsed_relation, i.first.c_str(), get_value_type(i.second->getType()).c_str()); 
-        
-    }
-     */
-    /* TODO: printf("label_refs: \n********************************\n");
-    for(auto i: label_ref){
-        printf("    label:id:%s\n",i.first.c_str());
-        sprintf(parsed_domain, "%slabel_type(%s)\n", parsed_domain, i.first.c_str());
-    }
-     */
-    /* TODO: printf("array_refs: \n********************************\n");
-    for(auto i: array_ref){
-        printf("    array:id:%s, size:%llu, component_type:%s\n",i.first.c_str(), i.second->getType()->getArrayNumElements(), get_value_type(i.second->getType()->getArrayElementType()).c_str());
-        sprintf(parsed_domain, "%sarray_type(%s)\n", parsed_domain, i.first.c_str());
-        sprintf(parsed_relation, "%sarray_type_size(%s,%llu)\n", parsed_relation, i.first.c_str(), i.second->getType()->getArrayNumElements());
-        sprintf(parsed_relation, "%sarray_type_component(%s,%s)\n", parsed_relation, i.first.c_str(), get_value_type(i.second->getType()->getArrayElementType()).c_str());
-    }
-     */
-    /* TODO: printf("structure_refs: \n********************************\n");
-    for(auto i: structure_ref){
-        int field_num = i.second->getType()->getStructNumElements();
-        printf("    structure:id:%s, name:%s, opaque:%s, field_nums:%d\n",
-            i.first.c_str(), 
-            i.second->hasName() ? i.second->getName().data() : "unnamed", 
-            i.second->getType()->isOpaquePointerTy() ? "yes" : "no", 
-            field_num);
-        sprintf(parsed_domain, "%sstruct_type(%s)\n", parsed_domain, i.first.c_str());
-        if(i.second->hasName())
-            sprintf(parsed_relation, "%sstruct_type_name(%s,%s)\n", parsed_relation, i.first.c_str(), i.second->getName().data());
-        if(i.second->getType()->isOpaquePointerTy())
-            sprintf(parsed_relation, "%sopaque_pointer_type(%s)\n", parsed_relation, i.first.c_str());
-        sprintf(parsed_relation, "%sstruct_type_nfields(%s,%d)\n", parsed_relation, i.first.c_str(), i.second->getType()->getStructNumElements());
-
-        for(int j = 0; j < field_num; ++j){
-            string type_name;
-            switch(i.second->getType()->getStructElementType(j)->getTypeID()){
-                case llvm::Type::HalfTyID:
-                type_name = "halftyid";
-                break;
-                case llvm::Type::BFloatTyID:
-                case llvm::Type::FloatTyID:
-                case llvm::Type::DoubleTyID:
-                case llvm::Type::X86_FP80TyID:
-                case llvm::Type::FP128TyID:
-                case llvm::Type::PPC_FP128TyID:
-                type_name = "float";
-                break;
-                case llvm::Type::VoidTyID:
-                type_name = "void";
-                break;
-                case llvm::Type::LabelTyID:
-                type_name = "label";
-                break;
-                case llvm::Type::MetadataTyID:
-                type_name = "metadata";
-                break;
-                case llvm::Type::TokenTyID:
-                type_name = "token";
-                break;
-                case llvm::Type::FunctionTyID:
-                type_name = "function";
-                break;
-                case llvm::Type::IntegerTyID:
-                type_name = "integer";
-                break;
-                case llvm::Type::PointerTyID:
-                type_name = "pointer";
-                break;
-                case llvm::Type::StructTyID:
-                type_name = "struct";
-                break;
-                case llvm::Type::ArrayTyID:
-                type_name = "array";
-                break;
-                case llvm::Type::FixedVectorTyID:
-                case llvm::Type::ScalableVectorTyID:
-                type_name = "fixed_vec";
-                break;
-                default:
-                type_name = "unknown";
-                break;
-            }
-            printf("        field_%d:%s\n", j, type_name.c_str());
-            sprintf(parsed_relation, "%sstruct_type_field(%s,%d,%s)\n", parsed_relation, i.first.c_str(), j, type_name.c_str());
-        }
-    }
-     */
-}
-
-void IRManager::get_global_var(char * parsed_domain, char * parsed_relation){
-    /* TODO: printf("global_Vars: \n********************************\n");
-    for(auto I : global_ref){
-        printf("    id:%s, ty:%s\n", I.first.c_str(), get_value_type(I.second->getType()).c_str());
-        printf("    id:%s, name:%s\n", I.first.c_str(), I.first.c_str());
-        //printf("    id:%s, alignment:%d\n", I.first.c_str(), I.second->MaxAlignmentExponent);
-        printf("    id:%s, link type:%d\n", I.first.c_str(), I.second->getLinkage());
-        printf("    id:%s, visibility:%d\n", I.first.c_str(), I.second->getVisibility());
-        printf("    id:%s, initializer:%s\n", I.first.c_str(), I.second->getValueName()->getValue()->getName().str().c_str());
-        printf("    id:%s, section:%s\n", I.first.c_str(), I.second->getSection().str().c_str());
-        printf("    id:%s, threadlocal mode:%d\n", I.first.c_str(), I.second->getThreadLocalMode());
-        printf("    id:%s, constant:%d\n", I.first.c_str(), I.second->isConstantUsed());
-
-
-        sprintf(parsed_domain, "%sglobal_variable(%s)\n", parsed_domain, I.first.c_str());
-        sprintf(parsed_relation, "%sglobal_variable_type(%s,%s)\n", parsed_relation, I.first.c_str(), get_value_type(I.second->getType()).c_str());
-        sprintf(parsed_relation, "%sglobal_variable_name(%s,%s)\n", parsed_relation, I.first.c_str(), I.first.c_str());
-        //not sure
-        sprintf(parsed_relation, "%sglobal_variable_alignment(%s,%d)\n", parsed_relation, I.first.c_str(), 0);
-        sprintf(parsed_relation, "%sglobal_variable_linkage_type(%s,%s)\n", parsed_relation, I.first.c_str(), get_linkage_string(I.second->getLinkage()).c_str());
-        sprintf(parsed_relation, "%sglobal_variable_visibility(%s,%s)\n", parsed_relation, I.first.c_str(), get_visibility_string(I.second->getVisibility()).c_str());
-        sprintf(parsed_relation, "%sglobal_variable_initializer(%s,%s)\n", parsed_relation, I.first.c_str(), I.second->getValueName()->getValue()->getNameOrAsOperand().c_str());
-        sprintf(parsed_relation, "%sglobal_variable_section(%s,%s)\n", parsed_relation, I.first.c_str(), I.second->getSection().str().c_str());
-        sprintf(parsed_relation, "%sglobale_threadlocal_mode(%s,%s)\n", parsed_relation, I.first.c_str(), get_mode_string(I.second->getThreadLocalMode()).c_str());
-        if(I.second->isConstantUsed())
-            sprintf(parsed_relation, "%sglobal_variable_constant(%s)\n", parsed_relation, I.first.c_str());
-    }
-     */
-}
-
-void IRManager::get_aliases(char * parsed_domain, char * parsed_relation){
-    /* TODO: printf("global_Alises: \n*******************************\n");
-    for(auto I : alias_ref){
-        printf("\tid:%s, ty:%s\n", I.first.c_str(), get_value_type(I.second->getType()).c_str());
-        printf("\tid:%s, name:%s\n", I.first.c_str(), I.second->getName().data());
-        //the two below are enums, maybe these can be more precisely shown by listing their strs
-        printf("\tid:%s, ty:%d\n", I.first.c_str(), I.second->getLinkage());
-        printf("\tid:%s, visibility:%d\n", I.first.c_str(), I.second->getVisibility());
-        printf("\tid:%s, aliasee:%s\n", I.first.c_str(), I.second->getAliasee()->getName().data());
-
-        sprintf(parsed_domain, "%salias(%s)\n", parsed_domain, I.first.c_str());
-        sprintf(parsed_relation, "%salias_type(%s,%s)\n", parsed_relation, I.first.c_str(), get_value_type(I.second->getType()).c_str());
-        sprintf(parsed_relation, "%salias_name(%s,%s)\n", parsed_relation, I.first.c_str(), I.second->getName().data());
-        //the two below are enums, maybe these can be more precisely shown by listing their strs
-        sprintf(parsed_relation, "%salias_linkage_type(%s,%s)\n", parsed_relation, I.first.c_str(), get_linkage_string(I.second->getLinkage()).c_str());
-        sprintf(parsed_relation, "%salias_visibility(%s,%s)\n", parsed_relation, I.first.c_str(), get_visibility_string(I.second->getVisibility()).c_str());
-        sprintf(parsed_relation, "%salias_aliasee(%s,%s)\n", parsed_relation, I.first.c_str(), I.second->getAliasee()->getName().data());
-    }
-     */
 }
 
 
 
-void IRManager::get_functions(char * parsed_domain, char * parsed_relation) {
-    /* TODO: printf("functions: \n********************************\n");
-    for(auto I:func_ref){
-        string func_type = formatv("{0}", * (I.second->getFunctionType()));
-        sprintf(parsed_domain, "%sfunction(%s)", parsed_domain, I.first.c_str());
+void IRManager::build_function_rels() {
+    for(const auto& func_pair : func_map){
+        const string& f_str = func_pair.first;
+        Function *pFunc = func_pair.second;
+        // main_function(fn:M)
+        if (pFunc->getName().equals("main"))
+            rel_main_function.add({f_str});
+        // function_type(fn:M, ty:T)
+        FunctionType* pFnTy = pFunc->getFunctionType();
+        rel_function_type.add({f_str, rev_type_map[pFnTy]});
 
-        printf("\tid:%s, ty:%s\n", I.first.c_str(), get_value_type(dyn_cast<Type>(I.second->getFunctionType())).c_str());
-        printf("\tid:%s, name:%s\n", I.first.c_str(), I.second->getName().data());
-        printf("\tid:%s, linkage type:%d\n", I.first.c_str(), I.second->getLinkage());
-        printf("\tid:%s, visibility:%d\n", I.first.c_str(), I.second->getVisibility());
-        //calling convension is unsigned, what does it mean?
-        printf("\tid:%s, calling convension:%d\n", I.first.c_str(), I.second->getCallingConv());
-        //ref to none local global
-        sprintf(parsed_relation, "%sfunction_type(%s,%s)\n", parsed_relation, I.first.c_str(), func_type.c_str());
-        sprintf(parsed_relation, "%sfunction_name(%s,%s)\n", parsed_relation, I.first.c_str(), I.second->getName().data());
-        sprintf(parsed_relation, "%sfunction_linkage_type(%s,%s)\n", parsed_relation, I.first.c_str(), get_linkage_string(I.second->getLinkage()).c_str());
-        sprintf(parsed_relation, "%sfunction_visibility(%s,%s)\n", parsed_relation, I.first.c_str(), get_visibility_string(I.second->getVisibility()).c_str());
-        //calling convension is unsigned, what does it mean?
-        sprintf(parsed_relation, "%sfunction_calling_convension(%s,%d)\n", parsed_relation, I.first.c_str(), I.second->getCallingConv());
+        // function_name(fn:M, name:V)
+        rel_function_name.add({f_str, pFunc->getName().str()});
 
+        // function_linkage(fn:M, link:L)
+        GlobalValue::LinkageTypes link = pFunc->getLinkage();
+        rel_function_linkage.add({f_str, get_linkage_string(link)});
 
-        switch(I.second->getUnnamedAddr()){
-            case llvm::GlobalValue::UnnamedAddr::Global:
-            printf("\tid:%s, unnamed addr:global\n", I.first.c_str());
-            sprintf(parsed_relation, "%sfunction_unnamed_addr(%s,Global)\n", parsed_relation, I.first.c_str());
-            break;
-            case llvm::GlobalValue::UnnamedAddr::Local:
-            sprintf(parsed_relation, "%sfunction_unnamed_addr(%s,Local)\n", parsed_relation, I.first.c_str());
-            break;
-            case llvm::GlobalValue::UnnamedAddr::None:
-            sprintf(parsed_relation, "%sfunction_unnamed_addr(%s,None)\n", parsed_relation, I.first.c_str());
-            break;
-            default:
-            printf("\tsomething is error.\n");
+        // function_nparams(fn:M, n:Z)
+        size_t num_params = pFunc->arg_size();
+        rel_function_nparams.add({f_str, to_string(num_params)});
+
+        // function_param(fn:M, i:Z, arg:V)
+        for (size_t p_idx = 0; p_idx < num_params; ++p_idx) {
+            Argument * pArg = pFunc->getArg(p_idx);
+            // TODO: build argument ref first, add argument reference elsewhere
+            rel_function_param.add({f_str, to_string(p_idx), rev_value_map[pArg]});
         }
-        printf("\tid:%s, alignment:%llu\n", I.first.c_str(), I.second->getAlignment());
-        printf("\tid:%s, gc:%s\n", I.first.c_str(), I.second->hasGC()?I.second->getGC().c_str():"no gc");
-        //what exactly personally function is?
-        printf("\tid:%s, personally function:%s\n", I.first.c_str(), I.second->hasPersonalityFn()?I.second->getPersonalityFn()->getName().data():"no personality fn");
-        //attribute has some questions
-        //printf("\tid:%s, attribute:%s\n", I.first.c_str(), I.second->getFnAttribute());
-        //printf("\tid:%s, return attribute:%s\n", I.first.c_str(), I.second->attri);
-        printf("\tid:%s, custom section:%s\n", I.first.c_str(), I.second->getSection().str().c_str());
-        for(unsigned int i=0;i < I.second->arg_size(); i++){
-            std::string arg_n = I.first + I.second->getArg(i)->getName().data();
-            llvm::Argument * arg = I.second->getArg(i);
-            arg_ref.insert(make_pair(arg_n, arg));
-            printf("\tid:%s, num_arg:%d, arg_id:%s\n", I.first.c_str(), i, arg_n.c_str());
-            //also the attribute
-            printf("\tid:%s, num_arg:%d, arg_id:%s\n", I.first.c_str(), i, arg_n.c_str());
-        }
-        printf("\tid:%s, param nums:%ld\n", I.first.c_str(), I.second->arg_size());
 
-
-
-        sprintf(parsed_relation, "%sfunction_alignment(%s,%llu)\n", parsed_relation, I.first.c_str(), I.second->getAlignment());
-        if(I.second->hasGC())
-            sprintf(parsed_relation, "%sid:%s, gc:%s\n", I.first.c_str(), parsed_relation, I.second->getGC().c_str());
-        //what exactly personally function is?
-        if(I.second->hasPersonalityFn())
-            sprintf(parsed_relation, "%sfunction_pers_fn(%s,%s)\n", parsed_relation, I.first.c_str(), I.second->getPersonalityFn()->getName().data());
-        //attribute has some questions
-        for(auto J : I.second->getAttributes().getAttributes(llvm::AttributeList::FunctionIndex)){
-            sprintf(parsed_relation, "%sfunction_attribute(%s,%s)\n", parsed_relation, I.first.c_str(), J.getAsString().c_str());
+        if (pFunc->isDeclaration()) {
+            rel_function_extern.add({f_str});
+        } else {
+            BasicBlock & entry_bb = pFunc->getEntryBlock();
+            rel_function_entry.add({f_str, rev_bb_map[&entry_bb]});
         }
-        for(auto J : I.second->getAttributes().getAttributes(llvm::AttributeList::ReturnIndex)){
-            sprintf(parsed_relation, "%sfunction_return_attribute(%s,%s)\n", parsed_relation, I.first.c_str(), J.getAsString().c_str());
-        }
-        //sprintf(parsed_relation, "%sid:%s, return attribute:%s\n", parsed_relation, I.first.c_str(), I.second->attri);
-        if(I.second->hasSection())
-        sprintf(parsed_relation, "%sfunction_custom_section(%s,%s)\n", parsed_relation, I.first.c_str(), I.second->getSection().str().c_str());
-        for(unsigned int i=0;i < I.second->arg_size(); i++){
-            std::string arg_n = I.first + I.second->getArg(i)->getName().data();
-            llvm::Argument * arg = I.second->getArg(i);
-            arg_ref.insert(make_pair(arg_n, arg));
-            sprintf(parsed_relation, "%sfunction_param(%s, %d, %s)\n", parsed_relation, I.first.c_str(), i, arg_n.c_str());
-            //also the attribute
 
-            for(auto J : I.second->getAttributes().getAttributes(i+1)){
-                sprintf(parsed_relation, "%sfunction_param_attribute(%s,%d,%s)\n", parsed_relation, I.first.c_str(), i, J.getAsString().c_str());
-            }
-        }
-        sprintf(parsed_relation, "%sfunction_nparams(%s,%ld)\n", parsed_relation, I.first.c_str(), I.second->arg_size());
+//        rel_function_linkage_type.add({f_str, get_linkage_string(pFunc->getLinkage())});
+//        rel_function_visibility.add({f_str, get_visibility_string(pFunc->getVisibility())});
+//        rel_function_calling_convention.add({f_str, get_conv_kind(pFunc->getCallingConv())});
+//        switch(pFunc->getUnnamedAddr()){
+//            case llvm::GlobalValue::UnnamedAddr::Global:
+//                rel_function_unnamed_addr.add({f_str, "Global"});
+//                break;
+//            case llvm::GlobalValue::UnnamedAddr::Local:
+//                rel_function_unnamed_addr.add({f_str, "Local"});
+//                break;
+//            case llvm::GlobalValue::UnnamedAddr::None:
+//                rel_function_unnamed_addr.add({f_str, "None"});
+//                break;
+//            default:
+//                printf("\tsomething is error.\n");
+//        }
+//        rel_function_alignment.add({f_str, to_string(pFunc->getAlignment())});
+//        if(pFunc->hasGC())
+//            rel_function_gc.add({f_str, pFunc->getGC()});
+//        if(pFunc->hasPersonalityFn())
+//            rel_function_pers_fn.add({f_str, pFunc->getPersonalityFn()->getName().str()});
+//        for (const auto& attr: pFunc->getAttributes().getFnAttrs()){
+//            rel_function_attribute.add({f_str, attr.getAsString()});
+//        }
+//        for (const auto& attr : pFunc->getAttributes().getRetAttrs()){
+//            rel_function_return_attribute.add({f_str, attr.getAsString()});
+//        }
+//        for (size_t p_idx = 0; p_idx < num_params; ++p_idx) {
+//            for (const auto& attr : pFunc->getAttributes().getParamAttrs(p_idx)) {
+//                rel_function_param_attribute.add({f_str, attr.getAsString()});
+//            }
+//        }
+//        if(pFunc->hasSection())
+//            rel_function_section.add({f_str, pFunc->getSection().str()});
+
     }
-     */
 }
 
 
-void IRManager::parse_insts(){
-    /* TODO: Instructions
-    for(auto Inst:inst_map){
+void IRManager::build_instruction_rels() {
+    // TODO: mark terminator instructions?
+    for(const auto& inst_pair:inst_map){
+        const string& inst_str = inst_pair.first;
+        Instruction * pInst = inst_pair.second;
         //terminate inst
-        if(auto * Ret = dyn_cast<llvm::ReturnInst>(Inst.second)){
-            ret_inst_ref.insert(make_pair(Inst.first, Ret));
-        }
-        else if(auto * Br = dyn_cast<llvm::BranchInst>(Inst.second)){
-            br_inst_ref.insert(make_pair(Inst.first, Br));
-        }
-        else if(auto * Switch = dyn_cast<llvm::SwitchInst>(Inst.second)){
-            switch_inst_ref.insert(make_pair(Inst.first, Switch));
-        }
-        else if(auto * InBr = dyn_cast<llvm::IndirectBrInst>(Inst.second)){
-            inbr_inst_ref.insert(make_pair(Inst.first, InBr));
-        }
-        else if(auto * UnRe = dyn_cast<llvm::UnreachableInst>(Inst.second)){
-            unre_inst_ref.insert(make_pair(Inst.first, UnRe));
-        }
-        //binary inst
-        else if(Inst.second->isBinaryOp()){
-            binary_inst_ref.insert(make_pair(Inst.first, Inst.second));
-        }
-        //memory inst
-        else if(auto * Alloc = dyn_cast<llvm::AllocaInst>(Inst.second)){
-            alloc_inst_ref.insert(make_pair(Inst.first, Alloc));
-        }
-        else if(auto * Load = dyn_cast<llvm::LoadInst>(Inst.second)){
-            load_inst_ref.insert(make_pair(Inst.first, Load));
-        }
-        else if(auto * Store = dyn_cast<llvm::StoreInst>(Inst.second)){
-            store_inst_ref.insert(make_pair(Inst.first, Store));
-        }
-        else if(auto * Fence = dyn_cast<llvm::FenceInst>(Inst.second)){
-            fence_inst_ref.insert(make_pair(Inst.first, Fence));
-        }
-        else if(auto * Cmpxchg = dyn_cast<llvm::AtomicCmpXchgInst>(Inst.second)){
-            cmpx_inst_ref.insert(make_pair(Inst.first, Cmpxchg));
-        }
-        else if(auto * Atomic = dyn_cast<llvm::AtomicRMWInst>(Inst.second)){
-            atom_inst_ref.insert(make_pair(Inst.first, Atomic));
-        }
-        else if(auto * GetElePtr = dyn_cast<llvm::GetElementPtrInst>(Inst.second)){
-            get_ele_ptr_inst_ref.insert(make_pair(Inst.first, GetElePtr));
-        }
-        //vector operation inst
-        else if(auto * Shuff = dyn_cast<llvm::ShuffleVectorInst>(Inst.second)){
-            shu_vec_inst_ref.insert(make_pair(Inst.first, Shuff));
-        }
-        else if(auto * Insert = dyn_cast<llvm::InsertElementInst>(Inst.second)){
-            in_ele_inst_ref.insert(make_pair(Inst.first, Insert));
-        }
-        else if(auto * Extract = dyn_cast<llvm::ExtractElementInst>(Inst.second)){
-            ex_ele_inst_ref.insert(make_pair(Inst.first, Extract));
-        }
-        //aggregate operation inst
-        else if(auto * ExtVal = dyn_cast<llvm::ExtractValueInst>(Inst.second)){
-            ex_val_inst_ref.insert(make_pair(Inst.first, ExtVal));
-        }
-        else if(auto * InsVal = dyn_cast<llvm::InsertValueInst>(Inst.second)){
-            in_val_inst_ref.insert(make_pair(Inst.first, InsVal));
-        }
-        //conversion inst
-        else if(auto * Cast = dyn_cast<llvm::CastInst>(Inst.second)){
-            conversion_inst_ref.insert(make_pair(Inst.first, Cast));
-        }
-        //other inst
-        else if(auto * Icmp = dyn_cast<llvm::ICmpInst>(Inst.second)){
-            icmp_inst_ref.insert(make_pair(Inst.first, Icmp));
-        }
-        else if(auto * Fcmp = dyn_cast<llvm::FCmpInst>(Inst.second)){
-            fcmp_inst_ref.insert(make_pair(Inst.first, Fcmp));
-        }
-        else if(auto * Select = dyn_cast<llvm::SelectInst>(Inst.second)){
-            sel_inst_ref.insert(make_pair(Inst.first, Select));
-        }
-        else if(auto * Call = dyn_cast<llvm::CallInst>(Inst.second)){
-            call_inst_ref.insert(make_pair(Inst.first, Call));
-        }
-        else if(auto * Phi = dyn_cast<llvm::PHINode>(Inst.second)){
-            phi_inst_ref.insert(make_pair(Inst.first, Phi));
-        }
-        else if(auto * VaArg = dyn_cast<llvm::VAArgInst>(Inst.second)){
-            va_arg_inst_ref.insert(make_pair(Inst.first, VaArg));
-        }
-    }
-     */
-}
-
-void IRManager::get_terminate_insts(char * parsed_domain, char * parsed_relation){
-    // TODO: terminate instructions
-    printf("terminater_insts: \n********************************\n");
-    printf("\treturn_insts: \n\t********************************\n");
-    /* TODO: return instructions
-    for(const auto& I : ret_inst_ref){
-        printf("\t\tid: %s\n", I.first.c_str());
-        if(auto ret = I.second->getReturnValue()){
-            printf("\t\tid: %s, ret: %s\n", I.first.c_str(), get_inst_id(dyn_cast<llvm::Instruction>(ret), inst_map).c_str());
-        }
-        else{
-            printf("\t\tid: %s, ret: null\n", I.first.c_str());
-        }
-    }
-    for(const auto& I : ret_inst_ref){
-        sprintf(parsed_domain, "%sret_instruction(%s)\n", parsed_domain, I.first.c_str());
-        if(auto ret = I.second->getReturnValue()){
-            sprintf(parsed_relation, "%sret_instruction_val(%s,%s)\n", parsed_relation, I.first.c_str(), get_inst_id(dyn_cast<llvm::Instruction>(ret), inst_map).c_str());
-        }
-        else{
-            sprintf(parsed_relation, "%sret_instruction_void(%s)\n", parsed_relation, I.first.c_str());
-        }
-    }
-*/
-    /* TODO: branch instructions
-    printf("\tbranch_insts: \n\t********************************\n");
-    for(auto I : br_inst_ref){
-        printf("\t\tid: %s\n", I.first.c_str());
-        if(I.second->isConditional()){
-            llvm::Instruction * Inst = dyn_cast<llvm::Instruction>(I.second->getCondition());
-            llvm::Value * true_flg = I.second->getOperand(1);
-            llvm::Value * false_flg = I.second->getOperand(2);
-            printf("\t\tid: %s, cond_inst: %s\n", I.first.c_str(), Inst->getName().str().c_str());
-            printf("\t\tid: %s, true flag: %s\n", I.first.c_str(), get_inst_id(dyn_cast<llvm::Instruction>(true_flg), inst_map).c_str());
-            printf("\t\tid: %s, false flag: %s\n", I.first.c_str(), get_inst_id(dyn_cast<llvm::Instruction>(false_flg), inst_map).c_str());
-        }
-        else{
-            llvm::Value * dest = dyn_cast<llvm::Value>(I.second->getOperand(0));
-            printf("\t\tid: %s, false flag: %s\n", I.first.c_str(), get_inst_id(dyn_cast<llvm::Instruction>(dest), inst_map).c_str());
-        }
-    }
-
-    for(auto I : br_inst_ref){
-        sprintf(parsed_domain, "%sbr_instruction(%s)\n", parsed_domain, I.first.c_str());
-        if(I.second->isConditional()){
-            llvm::Instruction * Inst = dyn_cast<llvm::Instruction>(I.second->getCondition());
-            llvm::Value * true_flg = I.second->getOperand(1);
-            llvm::Value * false_flg = I.second->getOperand(2);
-            sprintf(parsed_relation, "%sbr_cond_instruction(%s)\n", parsed_domain, I.first.c_str());
-            sprintf(parsed_relation, "%sbr_cond_instruction_cond(%s,%s)\n", parsed_relation, I.first.c_str(), Inst->getName().str().c_str());
-            sprintf(parsed_relation, "%sbr_cond_instruction_iftrue(%s,%s)\n", parsed_relation, I.first.c_str(), get_inst_id(dyn_cast<llvm::Instruction>(true_flg), inst_map).c_str());
-            sprintf(parsed_relation, "%sbr_cond_instruction_iffalse(%s,%s)\n", parsed_relation, I.first.c_str(), get_inst_id(dyn_cast<llvm::Instruction>(false_flg), inst_map).c_str());
-        }
-        else{
-            llvm::Value * dest = dyn_cast<llvm::Value>(I.second->getOperand(0));
-            sprintf(parsed_relation, "%sbr_uncond_instruction(%s)\n", parsed_domain, I.first.c_str());
-            sprintf(parsed_relation, "%sbr_uncond_dest(%s,%s)\n", parsed_domain, I.first.c_str(), get_inst_id(dyn_cast<llvm::Instruction>(dest), inst_map).c_str());
-        }
-    }
-*/
-    /* TODO: switch instructions
-    printf("\tswitch_insts: \n\t********************************\n");
-    for(auto I : switch_inst_ref){
-        printf("\t\tid: %s\n", I.first.c_str());
-        llvm::Instruction * Inst = dyn_cast<llvm::Instruction>(I.second->getCondition());
-        printf("\t\tid: %s, condition: %s\n", I.first.c_str(), Inst->getName().str().c_str());
-        //default jmp label
-        llvm:: Value * label = I.second->getOperand(1);
-        printf("\t\tid: %s, default label:%s\n", I.first.c_str(), label->getName().str().c_str());
-        printf("\t\tid: %s, num label:%d\n", I.first.c_str(), I.second->getNumCases());
-        int num_cases = I.second->getNumCases();
-        for(int i = 0 ; i < num_cases ; i++){
-            llvm::Value * caseval_i = I.second->getOperand(2*i+1);
-            llvm::Value * caselabel_i = I.second->getOperand(2*(i+1));
-            printf("\t\t\tid:%s, case: %d, label: %s\n", I.first.c_str(), i, get_inst_id(dyn_cast<llvm::Instruction>(caselabel_i), inst_map).c_str());
-            printf("\t\t\tid:%s, case: %d, value: %s\n", I.first.c_str(), i, caseval_i->getName().str().c_str());
-        }
-    }
-    for(auto I : switch_inst_ref){
-        sprintf(parsed_domain, "%sswitch_instruction(%s)\n", parsed_domain, I.first.c_str());
-        llvm::Instruction * Inst = dyn_cast<llvm::Instruction>(I.second->getCondition());
-        sprintf(parsed_relation, "%sswitch_instruction_cond(%s,%s)\n", parsed_relation, I.first.c_str(), Inst->getName().str().c_str());
-        //default jmp label
-        llvm:: Value * label = I.second->getOperand(1);
-        sprintf(parsed_relation, "%sswitch_instruction_default(%s,%s)\n", parsed_relation, I.first.c_str(), label->getName().str().c_str());
-        sprintf(parsed_relation, "%sswitch_instruction_ncases(%s,%d)\n", parsed_relation, I.first.c_str(), I.second->getNumCases());
-        int num_cases = I.second->getNumCases();
-        for(int i = 0 ; i < num_cases ; i++){
-            llvm::Value * caseval_i = I.second->getOperand(2*i+1);
-            llvm::Value * caselabel_i = I.second->getOperand(2*(i+1));
-            sprintf(parsed_relation, "%sswitch_instruction_case_label(%s,%d,%s)\n", parsed_relation, I.first.c_str(), i, get_inst_id(dyn_cast<llvm::Instruction>(caselabel_i), inst_map).c_str());
-            sprintf(parsed_relation, "%sswitch_instruction_case_value(%s,%d,%s)\n", parsed_relation, I.first.c_str(), i, caseval_i->getName().str().c_str());
-        }
-    }
-     */
-    /* TODO: indirecte_branch_insts
-    printf("\ttindirect_branch_insts: \n\t********************************\n");
-    for(auto I : inbr_inst_ref){
-        printf("\t\tid: %s\n", I.first.c_str());
-        printf("\t\tid: %s, addr: %s\n",I.first.c_str(), I.second->getAddress()->getName().str().c_str());
-        printf("\t\tid: %s, num labels: %d\n", I.first.c_str(), I.second->getNumDestinations());
-        int label_num = I.second->getNumDestinations();
-        for(int i = 0 ; i < label_num ; i++){
-            llvm::Value * addr_i = I.second->getOperand(i);
-            printf("\t\t\tid: %s, dest: %d, label: %s\n", I.first.c_str(), i, get_inst_id(dyn_cast<llvm::Instruction>(addr_i), inst_map).c_str());
-        }
-    }
-    for(auto I : inbr_inst_ref){
-        sprintf(parsed_domain, "%sindirectbr_instruction(%s)\n", parsed_domain, I.first.c_str());
-        sprintf(parsed_relation, "%sindirectbr_instruction_address(%s,%s)\n", parsed_relation, I.first.c_str(), I.second->getAddress()->getName().str().c_str());
-        sprintf(parsed_relation, "%sindirectbr_instruction_nlabels(%s,%d)\n", parsed_relation, I.first.c_str(), I.second->getNumDestinations());
-        int label_num = I.second->getNumDestinations();
-        for(int i = 0 ; i < label_num ; i++){
-            llvm::Value * addr_i = I.second->getOperand(i);
-            sprintf(parsed_relation, "%sindirectbr_instruction_label(%s,%d,%s)\n", parsed_relation, I.first.c_str(), i, get_inst_id(dyn_cast<llvm::Instruction>(addr_i), inst_map).c_str());
-        }
-    }
-*/
-/* TODO unreachable_insts
-    printf("\tunreachable_insts: \n\t********************************\n");
-    for(auto I : unre_inst_ref){
-        printf("\t\tid: %s\n",I.first.c_str());
-    }
-    for(auto I : unre_inst_ref){
-        printf(parsed_domain, "unreachable_instruction(%s)\n", parsed_domain, I.first.c_str());
-    }
-    */
-}
-
-void IRManager::get_binary_insts(char * parsed_domain, char * parsed_relation){
-    /* TODO: printf("binary_insts: \n********************************\n");
-    for(auto I : binary_inst_ref){
-        std::string opcode = I.second->getOpcodeName();
-        printf("\t%s_inst_id: %s\n", opcode.c_str(), I.first.c_str());
-        printf("\t%s_inst_id: %s, first_op: %s\n", opcode.c_str(), I.first.c_str(), I.second->getOperand(0)->getNameOrAsOperand().c_str());
-        printf("\t%s_inst_id: %s, second_op: %s\n", opcode.c_str(), I.first.c_str(), I.second->getOperand(1)->getNameOrAsOperand().c_str());
-    }
-
-    for(auto I : binary_inst_ref){
-        std::string opcode = I.second->getOpcodeName();
-        printf(parsed_domain, "%s%s_instruction(%s)\n", parsed_domain, opcode.c_str(), I.first.c_str());
-        printf(parsed_relation, "%s%s_instruction_first_operand(%s,%s)\n", parsed_relation, opcode.c_str(), I.first.c_str(), I.second->getOperand(0)->getNameOrAsOperand().c_str());
-        printf(parsed_relation, "%s%s_instruction_second_operand(%s,%s)\n", parsed_relation, opcode.c_str(), I.first.c_str(), I.second->getOperand(1)->getNameOrAsOperand().c_str());
-    }
-     */
-}
-
-void IRManager::get_vector_insts(char * parsed_domain, char * parsed_relation){
-    printf("vector_insts: \n********************************\n");
-    printf("\textract_element_insts: \n********************************\n");
-    /* TODO: vector_insts
-    for(auto I : ex_ele_inst_ref){
-        printf("\t\tid: %s\n", I.first.c_str());
-        //whether the vector name should use get name or get name or as operand is doubtful
-        printf("\t\tid: %s, vector: %s\n", I.first.c_str(), I.second->getOperand(0)->getName().str().c_str());
-        printf("\t\tid: %s, index: %s\n", I.first.c_str(), I.second->getOperand(1)->getNameOrAsOperand().c_str());
-    }
-
-    printf("\tinsert_element_insts: \n********************************\n");
-    for(auto I : in_ele_inst_ref){
-        printf("\t\tid: %s\n", I.first.c_str());
-        //whether the vector name should use get name or get name or as operand is doubtful
-        printf("\t\tid: %s, vector: %s\n", I.first.c_str(), I.second->getOperand(0)->getName().str().c_str());
-        printf("\t\tid: %s, val: %s\n", I.first.c_str(), I.second->getOperand(1)->getNameOrAsOperand().c_str());
-        printf("\t\tid: %s, index: %s\n", I.first.c_str(), I.second->getOperand(2)->getNameOrAsOperand().c_str());
-    }
-
-    printf("\tshuffle_element_insts: \n********************************\n");
-    for(auto I : shu_vec_inst_ref){
-        printf("\t\tid: %s\n", I.first.c_str());
-        //whether the vector name should use get name or get name or as operand is doubtful
-        printf("\t\tid: %s, vector1: %s\n", I.first.c_str(), I.second->getOperand(0)->getName().str().c_str());
-        printf("\t\tid: %s, vector2: %s\n", I.first.c_str(), I.second->getOperand(1)->getName().str().c_str());
-        printf("\t\tid: %s, index: %s\n", I.first.c_str(), I.second->getOperand(2)->getNameOrAsOperand().c_str());
-    }
-
-
-
-    for(auto I : ex_ele_inst_ref){
-        sprintf(parsed_domain, "%sextractelement_instruction(%s)\n", parsed_domain, I.first.c_str());
-        //whether the vector name should use get name or get name or as operand is doubtful
-        sprintf(parsed_relation, "%sextractelement_instruction_base(%s,%s)\n", parsed_relation, I.first.c_str(), I.second->getOperand(0)->getName().str().c_str());
-        sprintf(parsed_relation, "%sextractelement_instruction_index(%s,%s)\n", parsed_relation, I.first.c_str(), I.second->getOperand(1)->getNameOrAsOperand().c_str());
-    }
-    
-    printf("\tinsert_element_insts: \n********************************\n");
-    for(auto I : in_ele_inst_ref){
-        sprintf(parsed_domain, "%sinsertelement_instruction(%s)\n", parsed_domain, I.first.c_str());
-        //whether the vector name should use get name or get name or as operand is doubtful
-        sprintf(parsed_relation, "%sinsertelement_instruction_base(%s,%s)\n", parsed_relation, I.first.c_str(), I.second->getOperand(0)->getName().str().c_str());
-        sprintf(parsed_relation, "%sinsertelement_instruction_index(%s,%s)\n", parsed_relation, I.first.c_str(), I.second->getOperand(1)->getNameOrAsOperand().c_str());
-        sprintf(parsed_relation, "%sinsertelement_instruction_value(%s,%s)\n", parsed_relation, I.first.c_str(), I.second->getOperand(2)->getNameOrAsOperand().c_str());
-    }
-
-    printf("\tshuffle_vector_insts: \n********************************\n");
-    for(auto I : shu_vec_inst_ref){
-        sprintf(parsed_domain, "%sshufflevector_instruction(%s\n", parsed_domain, I.first.c_str());
-        //whether the vector name should use get name or get name or as operand is doubtful
-        sprintf(parsed_relation, "%sshufflevector_instruction_first_vector(%s,%s)\n", parsed_relation, I.first.c_str(), I.second->getOperand(0)->getName().str().c_str());
-        sprintf(parsed_relation, "%sshufflevector_instruction_second_vector(%s,%s)\n", parsed_relation, I.first.c_str(), I.second->getOperand(1)->getName().str().c_str());
-        sprintf(parsed_relation, "%sshufflevector_instruction_index(%s,%s)\n", parsed_relation, I.first.c_str(), I.second->getOperand(2)->getNameOrAsOperand().c_str());
-    }
-*/
-}
-
-void IRManager::get_aggregate_insts(char * parsed_domain, char * parsed_relation){
-    // TODO: aggregate_insts
-    /*
-    printf("vector_insts: \n********************************\n");
-    printf("\textract_element_insts: \n********************************\n");
-    for(auto I : ex_val_inst_ref){
-        printf("\t\tid: %s\n", I.first.c_str());
-        //whether the vector name should use get name or get name or as operand is doubtful
-        printf("\t\tid: %s, agg: %s\n", I.first.c_str(), I.second->getOperand(0)->getName().str().c_str());
-        printf("\t\tid: %s, num indices: %d\n", I.first.c_str(), I.second->getNumIndices());
-        for(unsigned int i = 0 ; i < I.second->getNumIndices() ; i++){
-            printf("\t\t\tid: %s, indice index: %d, val: %d\n", I.first.c_str(), i, I.second->getIndices()[i]);
-        }
-    }
-    printf("\tinsert_element_insts: \n********************************\n");
-    for(auto I : in_val_inst_ref){
-        printf("\t\tid: %s\n", I.first.c_str());
-        //whether the vector name should use get name or get name or as operand is doubtful
-        printf("\t\tid: %s, agg: %s\n", I.first.c_str(), I.second->getOperand(0)->getName().str().c_str());
-        printf("\t\tid: %s, num indices: %d\n", I.first.c_str(), I.second->getNumIndices());
-        printf("\t\tid: %s, val: %s\n", I.first.c_str(), I.second->getOperand(1)->getNameOrAsOperand().c_str());
-        for(unsigned int i = 0 ; i < I.second->getNumIndices() ; i++){
-            printf("\t\t\tid: %s, indice index: %d, val: %d\n", I.first.c_str(), i, I.second->getIndices()[i]);
-        }
-        
-    }
-
-
-    for(auto I : ex_val_inst_ref){
-        sprintf(parsed_domain, "%sextractvalue_instruction(%s)\n", parsed_domain, I.first.c_str());
-        //whether the vector name should use get name or get name or as operand is doubtful
-        sprintf(parsed_relation, "%sextractvalue_instruction_base(%s,%s)\n", parsed_relation, I.first.c_str(), I.second->getOperand(0)->getName().str().c_str());
-        sprintf(parsed_relation, "%sextractvalue_instruction_nindices(%s,%d)\n", parsed_relation, I.first.c_str(), I.second->getNumIndices());
-        for(unsigned int i = 0 ; i < I.second->getNumIndices() ; i++){
-            printf(parsed_relation, "%sextractvalue_instruction_index(%s,%d,%d)\n", parsed_relation, I.first.c_str(), i, I.second->getIndices()[i]);
-        }
-    }
-    for(auto I : in_val_inst_ref){
-        sprintf(parsed_domain, "%sinsertvalue_instruction(%s)\n", parsed_domain, I.first.c_str());
-        //whether the vector name should use get name or get name or as operand is doubtful
-        sprintf(parsed_relation, "%sinsertvalue_instruction_base(%s,%s)\n", parsed_relation, I.first.c_str(), I.second->getOperand(0)->getName().str().c_str());
-        sprintf(parsed_relation, "%sinsertvalue_instruction_value(%s,%d)\n", parsed_relation, I.first.c_str(), I.second->getNumIndices());
-        sprintf(parsed_relation, "%sinsertvalue_instruction_nindices(%s,%s)\n", parsed_relation, I.first.c_str(), I.second->getOperand(1)->getNameOrAsOperand().c_str());
-        for(unsigned int i = 0 ; i < I.second->getNumIndices() ; i++){
-            sprintf(parsed_relation, "%sinsertvalue_instruction_index(%s,%d,%d)\n", parsed_relation, I.first.c_str(), i, I.second->getIndices()[i]);
-        }
-        
-    }
-     */
-}
-
-void IRManager::get_memory_insts(char * parsed_domain, char * parsed_relation){
-    /* TODO: memory_insts
-    printf("memory_insts: \n********************************\n");
-    printf("\talloca_insts: \n********************************\n");
-    for(auto I : alloc_inst_ref){
-        printf("\t\tid: %s\n", I.first.c_str());
-        printf("\t\tid: %s, align: %llu\n", I.first.c_str(), I.second->getAlign().value());
-        printf("\t\tid: %s, size: %s\n", I.first.c_str(), I.second->getArraySize()->getNameOrAsOperand().c_str());
-        printf("\t\tid: %s, type: %s\n", I.first.c_str(), get_value_type(I.second->getAllocatedType()).c_str());
-    }
-    printf("\tload_insts: \n********************************\n");
-    for(auto I : load_inst_ref){
-        printf("\t\tid: %s\n", I.first.c_str());
-        printf("\t\tid: %s, align: %llu\n", I.first.c_str(), I.second->getAlign().value());
-        //the output is a enum class, turn into str if needed
-        printf("\t\tid: %s, ordering: %s\n", I.first.c_str(), get_ordering_kind(I.second->getOrdering()).c_str());
-        printf("\t\tid: %s, volatile: %s\n", I.first.c_str(), I.second->isVolatile()?"true":"false");
-        printf("\t\tid: %s, address: %u\n", I.first.c_str(), I.second->getPointerAddressSpace());
-    }
-    printf("\tstore_insts: \n********************************\n");
-    for(auto I : store_inst_ref){
-        printf("\t\tid: %s\n", I.first.c_str());
-        printf("\t\tid: %s, align: %llu\n", I.first.c_str(), I.second->getAlign().value());
-        //the output is a enum class, turn into str if needed
-        printf("\t\tid: %s, ordering: %s\n", I.first.c_str(), get_ordering_kind(I.second->getOrdering()).c_str());
-        printf("\t\tid: %s, volatile: %s\n", I.first.c_str(), I.second->isVolatile()?"true":"false");
-        printf("\t\tid: %s, value: %s\n", I.first.c_str(), I.second->getValueOperand()->getNameOrAsOperand().c_str());
-        printf("\t\tid: %s, address: %u\n", I.first.c_str(), I.second->getPointerAddressSpace());
-    }
-    printf("\tfence_insts: \n********************************\n");
-    for(auto I : fence_inst_ref){
-        printf("\t\tid: %s\n", I.first.c_str());
-        //the output is a enum class, turn into str if needed
-        printf("\t\tid: %s, ordering: %s\n", I.first.c_str(), get_ordering_kind(I.second->getOrdering()).c_str());
-    }
-    printf("\tcmpxarg_insts: \n********************************\n");
-    for(auto I : cmpx_inst_ref){
-        printf("\t\tid: %s\n", I.first.c_str());
-        printf("\t\tid: %s, align: %llu\n", I.first.c_str(), I.second->getAlign().value());
-        //the output is a enum class, turn into str if needed
-        printf("\t\tid: %s, succ ordering: %s\n", I.first.c_str(), get_ordering_kind(I.second->getSuccessOrdering()).c_str());
-        printf("\t\tid: %s, fail ordering: %s\n", I.first.c_str(), get_ordering_kind(I.second->getFailureOrdering()).c_str());
-        printf("\t\tid: %s, volatile: %s\n", I.first.c_str(), I.second->isVolatile()?"true":"false");
-        printf("\t\tid: %s, cmp value: %s\n", I.first.c_str(), I.second->getCompareOperand()->getNameOrAsOperand().c_str());
-        printf("\t\tid: %s, address: %u\n", I.first.c_str(), I.second->getPointerAddressSpace());
-        printf("\t\tid: %s, new value: %s\n", I.first.c_str(), I.second->getNewValOperand()->getNameOrAsOperand().c_str());
-    }
-    printf("\tatomic_insts: \n********************************\n");
-    for(auto I : atom_inst_ref){
-        printf("\t\tid: %s\n", I.first.c_str());
-        //the output is a enum class, turn into str if needed
-        printf("\t\tid: %s, ordering: %s\n", I.first.c_str(), get_ordering_kind(I.second->getOrdering()).c_str());
-        // not sure whether get opcode name will return the correct name
-        printf("\t\tid: %s, operator: %s\n", I.first.c_str(), I.second->getOpcodeName());
-        printf("\t\tid: %s, volatile: %s\n", I.first.c_str(), I.second->isVolatile()?"true":"false");
-        printf("\t\tid: %s, address: %u\n", I.first.c_str(), I.second->getPointerAddressSpace());
-        printf("\t\tid: %s, new value: %s\n", I.first.c_str(), I.second->getValOperand()->getNameOrAsOperand().c_str());
-    }
-    printf("\tatomic_insts: \n********************************\n");
-    for(auto I : get_ele_ptr_inst_ref){
-        printf("\t\tid: %s\n", I.first.c_str());
-        printf("\t\tid: %s, inbound: %s\n", I.first.c_str(), I.second->isInBounds()?"ture":"false");
-        printf("\t\tid: %s, address: %u\n", I.first.c_str(), I.second->getPointerAddressSpace());
-        printf("\t\tid: %s, indice num: %u\n", I.first.c_str(), I.second->getNumIndices());
-        /* how to get the indexed array?
-        // TODO: use iterator
-        for(int i = 0 ; i < I.second->getNumIndices(); i ++){
-            printf("\t\t\tid: %s. indice index: %d, val: %s\n", I.first.c_str(), i, I.second->get)
-        }
-        /
-    }
-
-
-
-    for(auto I : alloc_inst_ref){
-        sprintf(parsed_domain, "%salloca_instruction(%s)\n", parsed_domain, I.first.c_str());
-        sprintf(parsed_relation, "%salloca_instruction_alignment(%s,%llu)\n", parsed_relation, I.first.c_str(), I.second->getAlign().value());
-        sprintf(parsed_relation, "%salloca_instruction_size(%s,%s)\n", parsed_relation, I.first.c_str(), I.second->getArraySize()->getNameOrAsOperand().c_str());
-        sprintf(parsed_relation, "%salloca_instruction_type(%s,%s)\n", parsed_relation, I.first.c_str(), get_value_type(I.second->getAllocatedType()).c_str());
-    }
-    for(auto I : load_inst_ref){
-        sprintf(parsed_domain, "%sload_instruction(%s)\n", parsed_domain, I.first.c_str());
-        sprintf(parsed_relation, "%sload_instruction_alignment(%s,%llu)\n", parsed_relation, I.first.c_str(), I.second->getAlign().value());
-        //the output is a enum class, turn into str if needed
-        sprintf(parsed_relation, "%sload_instruction_ordering(%s,%s)\n", parsed_relation, I.first.c_str(), get_ordering_kind(I.second->getOrdering()).c_str());
-        if(I.second->isVolatile())
-            sprintf(parsed_relation, "%sload_instruction_volatile(%s)\n", parsed_relation, I.first.c_str());
-        sprintf(parsed_relation, "%sload_instruction_address(%s,%u)\n", parsed_relation, I.first.c_str(), I.second->getPointerAddressSpace());
-    }
-    for(auto I : store_inst_ref){
-        sprintf(parsed_domain, "%sstore_instruction(%s)\n", parsed_domain, I.first.c_str());
-        sprintf(parsed_relation, "%sstore_instruction_alignment(%s,%llu)\n", parsed_relation, I.first.c_str(), I.second->getAlign().value());
-        //the output is a enum class, turn into str if needed
-        sprintf(parsed_relation, "%sstore_instruction_ordering(%s,%s)\n", parsed_relation, I.first.c_str(), get_ordering_kind(I.second->getOrdering()).c_str());
-        sprintf(parsed_relation, "%sstore_instruction_volatile(%s,%s)\n", parsed_relation, I.first.c_str(), I.second->isVolatile()?"true":"false");
-        sprintf(parsed_relation, "%sstore_instruction_value(%s,%s)\n", parsed_relation, I.first.c_str(), I.second->getValueOperand()->getNameOrAsOperand().c_str());
-        sprintf(parsed_relation, "%sstore_instruction_address(%s,%u)\n", parsed_relation, I.first.c_str(), I.second->getPointerAddressSpace());
-    }
-    for(auto I : fence_inst_ref){
-        sprintf(parsed_domain, "%sfence_instruction(%s)\n", parsed_domain, I.first.c_str());
-        //the output is a enum class, turn into str if needed
-        sprintf(parsed_relation, "%sfence_instruction_ordering(%s,%s)\n", parsed_relation, I.first.c_str(), get_ordering_kind(I.second->getOrdering()).c_str());
-    }
-    for(auto I : cmpx_inst_ref){
-        sprintf(parsed_domain, "%scmpxchg_instruction(%s)\n", parsed_domain, I.first.c_str());
-        //the output is a enum class, turn into str if needed
-        sprintf(parsed_relation, "%scmpxchg_instruction_success_ordering(%s,%s)\n", parsed_relation, I.first.c_str(), get_ordering_kind(I.second->getSuccessOrdering()).c_str());
-        sprintf(parsed_relation, "%scmpxchg_instruction_failure_ordering(%s,%s)\n", parsed_relation, I.first.c_str(), get_ordering_kind(I.second->getFailureOrdering()).c_str());
-        if(I.second->isVolatile())
-            sprintf(parsed_relation, "%scmpxchg_instruction_volatile(%s)\n", parsed_relation, I.first.c_str());
-        sprintf(parsed_relation, "%scmpxchg_instruction_address(%s,%s)\n", parsed_relation, I.first.c_str(), I.second->getCompareOperand()->getNameOrAsOperand().c_str());
-        sprintf(parsed_relation, "%scmpxchg_instruction_cmp(%s,%u)\n", parsed_relation, I.first.c_str(), I.second->getPointerAddressSpace());
-        sprintf(parsed_relation, "%scmpxchg_instruction_new(%s,%s)\n", parsed_relation, I.first.c_str(), I.second->getNewValOperand()->getNameOrAsOperand().c_str());
-    }
-    printf("\tatomic_insts: \n********************************\n");
-    for(auto I : atom_inst_ref){
-        sprintf(parsed_domain, "%satomicrmw_instruction(%s)\n", parsed_domain, I.first.c_str());
-        //the output is a enum class, turn into str if needed
-        sprintf(parsed_relation, "%satomicrmw_instruction_ordering(%s,%s)\n", parsed_relation, I.first.c_str(), get_ordering_kind(I.second->getOrdering()).c_str());
-        // not sure whether get opcode name will return the correct name
-        sprintf(parsed_relation, "%satomicrmw_instruction_opeartion(%s,%s)\n", parsed_relation, I.first.c_str(), I.second->getOpcodeName());
-        if(I.second->isVolatile())
-            sprintf(parsed_relation, "%satomicrmw_instruction_volatile(%s)\n", parsed_relation, I.first.c_str());
-        sprintf(parsed_relation, "%satomicrmw_instruction_address(%s,%u)\n", parsed_relation, I.first.c_str(), I.second->getPointerAddressSpace());
-        sprintf(parsed_relation, "%satomicrmw_instruction_value(%s,%s)\n", parsed_relation, I.first.c_str(), I.second->getValOperand()->getNameOrAsOperand().c_str());
-    }
-    printf("\tget_ele_ptr: \n********************************\n");
-    for(auto I : get_ele_ptr_inst_ref){
-        sprintf(parsed_domain, "%sgetelementptr_instruction(%s)\n", parsed_domain, I.first.c_str());
-        if(I.second->isInBounds())
-            sprintf(parsed_relation, "%sgetelementptr_instruction_inbounds(%s)\n", parsed_relation, I.first.c_str());
-        sprintf(parsed_relation, "%sgetelementptr_instruction_base(%s,%u)\n", parsed_relation, I.first.c_str(), I.second->getPointerAddressSpace());
-        sprintf(parsed_relation, "%sgetelementptr_instruction_nindices(%s,%u)\n", parsed_relation, I.first.c_str(), I.second->getNumIndices());
-        
-        // TODO: use iterator
-        for(unsigned i = 0 ; i < I.second->getNumIndices(); i ++){
-            sprintf(parsed_relation, "%sgetelementptr_instruction_index(%s,%d,%s)\n", parsed_relation, I.first.c_str(), i, I.second->getOperand(i)->getName().str().c_str());
-        }
-        
-    }
-    */
-}
-
-
-
-void IRManager::get_conversion_insts(char * parsed_domain, char * parsed_relation){
-    /* TODO: printf("conversion_insts: \n********************************\n");
-    for(auto I : conversion_inst_ref){
-        printf("\tid: %s\n", I.first.c_str());
-        string op_type = I.second->getOpcodeName();
-        printf("\t%s_id: %s, value: %s\n", op_type.c_str(), I.first.c_str(), I.second->getOperand(0)->getNameOrAsOperand().c_str());
-        printf("\t%s_id: %s, src type: %s\n", op_type.c_str(), I.first.c_str(), get_value_type(I.second->getSrcTy()).c_str());
-        printf("\t%s_id: %s, value: %s\n", op_type.c_str(), I.first.c_str(), get_value_type(I.second->getDestTy()).c_str());
-    }
-    for(auto I : conversion_inst_ref){
-        sprintf(parsed_domain, "%s_instruction(%s)\n", parsed_domain, I.first.c_str());
-        string op_type = I.second->getOpcodeName();
-        sprintf(parsed_relation, "%s%s_instruction_from(%s,%s)\n", parsed_relation, op_type.c_str(), I.first.c_str(), I.second->getOperand(0)->getNameOrAsOperand().c_str());
-        sprintf(parsed_relation, "%s%s_instruction_from_type(%s,%s)\n", parsed_relation, op_type.c_str(), I.first.c_str(), get_value_type(I.second->getSrcTy()).c_str());
-        sprintf(parsed_relation, "%s%s_instruction_to_type(%s,%s)\n", parsed_relation, op_type.c_str(), I.first.c_str(), get_value_type(I.second->getDestTy()).c_str());
-    }
-     */
-}
-
-
-void IRManager::get_other_insts(char * parsed_domain, char * parsed_relation){
-    /* TODO printf("other_insts: \n********************************\n");
-    printf("\ticmp_insts: \n\t********************************\n");
-    for(auto I : icmp_inst_ref){
-        printf("\t\tid: %s\n", I.first.c_str());
-        printf("\t\tid: %s, cond: %s\n", I.first.c_str(), I.second->getOperand(0)->getNameOrAsOperand().c_str());
-        printf("\t\tid: %s, first op: %s\n", I.first.c_str(), I.second->getOperand(2)->getNameOrAsOperand().c_str());
-        printf("\t\tid: %s, second op: %s\n", I.first.c_str(), I.second->getOperand(3)->getNameOrAsOperand().c_str());
-    }
-    printf("\tfcmp_insts: \n\t********************************\n");
-    for(auto I : fcmp_inst_ref){
-        printf("\t\tid: %s\n", I.first.c_str());
-        printf("\t\tid: %s, cond: %s\n", I.first.c_str(), I.second->getOperand(0)->getNameOrAsOperand().c_str());
-        printf("\t\tid: %s, first op: %s\n", I.first.c_str(), I.second->getOperand(2)->getNameOrAsOperand().c_str());
-        printf("\t\tid: %s, second op: %s\n", I.first.c_str(), I.second->getOperand(3)->getNameOrAsOperand().c_str());
-    }
-    printf("\tphi_insts: \n\t********************************\n");
-    for(auto I : phi_inst_ref){
-        printf("\t\tid: %s\n", I.first.c_str());
-        printf("\t\tid: %s, type: %s\n", I.first.c_str(), get_value_type(I.second->getType()).c_str());
-        printf("\t\tid: %s, pairs num: %u\n", I.first.c_str(), I.second->getNumOperands()/2);
-        for(unsigned int i = 0 ; i < I.second->getNumOperands()/2 ; i++){
-            // not sure if correct
-            printf("\t\t\tid: %s, pair num: %d, value: %s\n", I.first.c_str(), i, I.second->getOperand(2*i+1)->getNameOrAsOperand().c_str());
-            printf("\t\t\tid: %s, pair num: %d, label: %s\n", I.first.c_str(), i, I.second->getOperand(2*i+2)->getNameOrAsOperand().c_str());
-        }
-        printf("\t\tid: %s, second op: %s\n", I.first.c_str(), I.second->getOperand(3)->getNameOrAsOperand().c_str());
-    }
-    printf("\tselect_insts: \n\t********************************\n");
-    for(auto I : sel_inst_ref){
-        printf("\t\tid: %s\n", I.first.c_str());
-        printf("\t\tid: %s, cond: %s\n", I.first.c_str(), I.second->getOperand(0)->getNameOrAsOperand().c_str());
-        printf("\t\tid: %s, true value: %s\n", I.first.c_str(), I.second->getTrueValue()->getNameOrAsOperand().c_str());
-        printf("\t\tid: %s, false value: %s\n", I.first.c_str(), I.second->getFalseValue()->getNameOrAsOperand().c_str());
-    }
-    printf("\tva_arg_insts: \n\t********************************\n");
-    for(auto I : va_arg_inst_ref){
-        printf("\t\tid: %s\n", I.first.c_str());
-        printf("\t\tid: %s, type: %s\n", I.first.c_str(), get_value_type(I.second->getType()).c_str());
-        printf("\t\tid: %s, arg list: %s\n", I.first.c_str(), I.second->getPointerOperand()->getNameOrAsOperand().c_str());
-    }
-    printf("\tcall_insts: \n\t********************************\n");
-    for(auto I : call_inst_ref){
-        //string call_func_signature = "";
-        printf("\t\tid: %s\n", I.first.c_str());
-        printf("\t\tid: %s, func name: %s\n", I.first.c_str(), I.second->getCalledFunction()->getNameOrAsOperand().c_str());
-        printf("\t\tid: %s, tail call avalible: %s\n", I.first.c_str(), I.second->isTailCall()?"yes":"no");
-        printf("\t\tid: %s, ret type: %s\n", I.first.c_str(), get_value_type(I.second->getCalledFunction()->getReturnType()).c_str());
-        for(auto J : I.second->getCalledFunction()->getAttributes().getAttributes(llvm::AttributeList::FunctionIndex)){
-            printf("\t\t\tid:%s, fn attributes: %s\n", I.first.c_str(), J.getAsString().c_str());
-        }
-        for(auto J : I.second->getCalledFunction()->getAttributes().getAttributes(llvm::AttributeList::ReturnIndex)){
-            printf("\t\t\tid:%s, ret attributes: %s\n", I.first.c_str(), J.getAsString().c_str());
-            //call_func_signature += get_value_type(I.second->getCalledFunction()->getReturnType());
-        }
-        unsigned int param_num = I.second->arg_size();
-        for(unsigned j = 0 ; j < param_num ; j++){
-            printf("\t\t\tid:%s, param num: %u, param: %s\n", I.first.c_str(), j, I.second->getArgOperand(j)->getNameOrAsOperand().c_str());
-            for(auto J : I.second->getCalledFunction()->getAttributes().getAttributes(j+1)){
-                printf("\t\t\t\tid:%s, param num: %u, param attributes: %s\n", I.first.c_str(), j, J.getAsString().c_str());
+        if (auto * pRet = dyn_cast<llvm::ReturnInst>(pInst)) {
+            // instruction_ret(inst:P)
+            rel_instruction_ret.add({inst_str});
+            if (Value * pRetVal = pRet->getReturnValue()) {
+                // instruction_ret_var(inst:P, var:V)
+                rel_instruction_ret_var.add({inst_str, rev_value_map[pRetVal]});
+            } else {
+                rel_instruction_ret_void.add({inst_str});
             }
-            /*
-            if(j == 0){
-                call_func_signature += "(";
+        } else if(auto * pBr = dyn_cast<llvm::BranchInst>(pInst)){
+            // instruction_br(inst:P)
+            rel_instruction_br.add({inst_str});
+            if (pBr->isConditional()) {
+                // instruction_br_cond(inst:P)
+                rel_instruction_br_cond.add({inst_str});
+                // instruction_br_cond_val(br_inst:P, v:V)
+                Value * pCond = pBr->getCondition();
+                rel_instruction_br_cond_val.add({inst_str, rev_value_map[pCond]});
+                // instruction_br_cond_iftrue(br_inst:P, l:BB)
+                BasicBlock * pTrue = pBr->getSuccessor(0);
+                rel_instruction_br_cond_iftrue.add({inst_str, rev_bb_map[pTrue]});
+                // instruction_br_cond_iffalse(br_inst:P, l:B)
+                BasicBlock * pFalse = pBr->getSuccessor(1);
+                rel_instruction_br_cond_iffalse.add({inst_str, rev_bb_map[pFalse]});
+            } else {
+                // instruction_br_uncond(inst:P)
+                rel_instruction_br_uncond.add({inst_str});
+                // instruction_br_uncond_goto(br_inst:P, l:B)
+                BasicBlock * pGoto = pBr->getSuccessor(0);
+                rel_instruction_br_uncond_goto.add({inst_str, rev_bb_map[pGoto]});
             }
-            else{
-                call_func_signature += " ";
-            }
-            call_func_signature += get_value_type(I.second->getArgOperand(j)->getType());
-            if(j == param_num - 1){
-                call_func_signature += ")";
-            }
-            /
-            //string streaming maybe more efficient
-            
-        }
-        std::string func_type = formatv("{0}", * (I.second->getFunctionType()));
-        printf("\t\tid: %s, calling conv: %u\n", I.first.c_str(), I.second->getCallingConv());
-        printf("\t\tid: %s, calling signature: %s\n", I.first.c_str(), func_type.c_str());
-        printf("\t\tid: %s, calling method: %s\n", I.first.c_str(), I.second->isIndirectCall()?"indirect":"direct");
+        } else if(auto * pSwitch = dyn_cast<llvm::SwitchInst>(pInst)){
+            // instruction_switch(inst:P)
+            rel_instruction_switch.add({inst_str});
+            // instruction_switch_var(inst:P, v:V)
+            Value * pCond = pSwitch->getCondition();
+            rel_instruction_switch_var.add({inst_str, rev_value_map[pCond]});
+            // instruction_switch_default(sw_inst:P, l:B)
+            BasicBlock * pDefault = pSwitch->getDefaultDest();
+            rel_instruction_switch_default.add({inst_str, rev_bb_map[pDefault]});
+            // instruction_switch_ncases(sw_inst:P, n:Z)
+            unsigned num_cases = pSwitch->getNumCases();
+            rel_instruction_switch_ncases.add({inst_str, to_string(num_cases)});
 
-    }
+            for (const auto & case_handle : pSwitch->cases()) {
+                unsigned idx = case_handle.getCaseIndex();
+                // instruction_switch_case_val(sw_inst:P, i:Z, cval:C)
+                ConstantInt * pConst = case_handle.getCaseValue();
+                rel_instruction_switch_case_val.add({inst_str, to_string(idx), rev_constint_map[pConst]});
+                // instruction_switch_case_goto(sw_inst:P, i:Z, l:B)
+                BasicBlock * pGoto = case_handle.getCaseSuccessor();
+                rel_instruction_switch_case_goto.add({inst_str, to_string(idx), rev_bb_map[pGoto]});
+            }
+        } else if(auto * pInBr = dyn_cast<llvm::IndirectBrInst>(pInst)){
+            // instruction_indirectbr(inst:P)
+            rel_instruction_indirectbr.add({inst_str});
+            // instruction_indirectbr_addr(inst:P, p:V)
+            Value * pAddr = pInBr->getAddress();
+            rel_instruction_indirectbr_addr.add({inst_str, rev_value_map[pAddr]});
+            // instruction_indirectbr_nlabels(inst:P, n:Z)
+            unsigned num_dests = pInBr->getNumDestinations();
+            rel_instruction_indirectbr_nlabels.add({inst_str, to_string(num_dests)});
+            // instruction_indirectbr_label(inst:P, i:Z, l:B)
+            for (unsigned dest_idx = 0; dest_idx < num_dests; ++dest_idx) {
+                BasicBlock * pDest = pInBr->getDestination(dest_idx);
+                rel_instruction_indirectbr_label.add({inst_str, to_string(dest_idx), rev_bb_map[pDest]});
+            }
+        } else if (auto * pInvk = dyn_cast<llvm::InvokeInst>(pInst)) {
+            // instruction_invk(inst:P)
+            rel_instruction_invk.add({inst_str});
+            // instruction_invk_void(inst:P)
+            // instruction_invk_res(inst:P, var:V)
+            if (pInvk->getType()->isVoidTy()) {
+                rel_instruction_invk_void.add({inst_str});
+            } else {
+                Value * pRes = pInvk;
+                rel_instruction_invk_res.add({inst_str, rev_value_map[pRes]});
+            }
+            // instruction_invk_static(inst:P, func:M)
+            // instruction_invk_dynamic(inst:P, fptr:V)
+            if (Function * pFunc = pInvk->getCalledFunction()) {
+                rel_instruction_invk_static.add({inst_str, rev_func_map[pFunc]});
+            } else {
+                Value * pFptr = pInvk->getCalledOperand();
+                rel_instruction_invk_dynamic.add({inst_str, rev_value_map[pFptr]});
+            }
+            // instruction_invk_nargs(inst:P, n:Z)
+            unsigned num_args = pInvk->arg_size();
+            rel_instruction_invk_nargs.add({inst_str, to_string(num_args)});
+            // instruction_invk_arg(inst:P, i:Z, arg:V)
+            for (unsigned arg_idx = 0; arg_idx < num_args; ++arg_idx) {
+                Value * pArg = pInvk->getArgOperand(arg_idx);
+                rel_instruction_invk_arg.add({inst_str, to_string(arg_idx), rev_value_map[pArg]});
+            }
+            // instruction_invk_normaldest(inst:P, normal_dest:B)
+            BasicBlock * pNormal = pInvk->getNormalDest();
+            rel_instruction_invk_normaldest.add({inst_str, rev_bb_map[pNormal]});
+            // instruction_invk_exceptiondest(inst:P, execption_dest:B)
+            BasicBlock * pExcept = pInvk->getUnwindDest();
+            rel_instruction_invk_exceptiondest.add({inst_str, rev_bb_map[pExcept]});
+        } else if (auto * pCallBr = dyn_cast<llvm::CallBrInst>(pInst)) {
+            // instruction_callbr(inst:P)
+            rel_instruction_callbr.add({inst_str});
+            // instruction_callbr_void(inst:P)
+            // instruction_callbr_res(inst:P, var:V)
+            if (pCallBr->getType()->isVoidTy()) {
+                rel_instruction_callbr_void.add({inst_str});
+            } else {
+                Value * pRes = pCallBr;
+                rel_instruction_callbr_res.add({inst_str, rev_value_map[pRes]});
+            }
+            // instruction_callbr_static(inst:P, func:M)
+            // instruction_callbr_dynamic(inst:P, fptr:V)
+            if (Function * pFunc = pCallBr->getCalledFunction()) {
+                rel_instruction_callbr_static.add({inst_str, rev_func_map[pFunc]});
+            } else {
+                Value * pFptr = pCallBr->getCalledOperand();
+                rel_instruction_callbr_dynamic.add({inst_str, rev_value_map[pFptr]});
+            }
+            // instruction_callbr_nargs(inst:P, n:Z)
+            unsigned num_args = pCallBr->arg_size();
+            rel_instruction_callbr_nargs.add({inst_str, to_string(num_args)});
+            // instruction_callbr_arg(inst:P, i:Z, arg:V)
+            for (unsigned arg_idx = 0; arg_idx < num_args; ++arg_idx) {
+                Value * pArg = pCallBr->getArgOperand(arg_idx);
+                rel_instruction_callbr_arg.add({inst_str, to_string(arg_idx), rev_value_map[pArg]});
+            }
+            // instruction_callbr_fallthrough(inst:P, dest:B)
+            BasicBlock * pFall = pCallBr->getDefaultDest();
+            rel_instruction_callbr_fallthrough.add({inst_str, rev_bb_map[pFall]});
+            // instruction_callbr_indirect(inst:P, dest:B)
+            for (BasicBlock * pIndirect : pCallBr->getIndirectDests()) {
+                rel_instruction_callbr_indirect.add({inst_str, rev_bb_map[pIndirect]});
+            }
+        } else if (auto * pResume = dyn_cast<llvm::ResumeInst>(pInst)) {
+            // instruction_resume(inst:P)
+            rel_instruction_resume.add({inst_str});
+            // instruction_resume_var(inst:P, v:V)
+            Value * pVar = pResume->getValue();
+            rel_instruction_resume_var.add({inst_str, rev_value_map[pVar]});
+        } else if (auto * pCatchSw = dyn_cast<llvm::CatchSwitchInst>(pInst)) {
+            // instruction_catchswitch(inst:P)
+            rel_instruction_catchswitch.add({inst_str});
+            // instruction_catchswitch(inst:P, res:V)
+            Value * pRes = pCatchSw;
+            rel_instruction_catchswitch_res.add({inst_str, rev_value_map[pRes]});
+            // instruction_catchswitch_within(inst:P, pad:V)
+            Value * pWithin = pCatchSw->getParentPad();
+            rel_instruction_catchswitch_within.add({inst_str, rev_value_map[pWithin]});
+            // instruction_catchswitch_handler(inst:P, handler:B)
+            for (BasicBlock * handler : pCatchSw->handlers()) {
+                rel_instruction_catchswitch_handler.add({inst_str, rev_bb_map[handler]});
+            }
+            // instruction_catchswitch_unwindlabel(inst:P, dest:B)
+            // instruction_catchswitch_unwindcaller(inst:P)
+            if (pCatchSw->hasUnwindDest()) {
+                BasicBlock * pDefault = pCatchSw->getUnwindDest();
+                rel_instruction_catchswitch_unwindlabel.add({inst_str, rev_bb_map[pDefault]});
+            } else {
+                rel_instruction_catchswitch_unwindcaller.add({inst_str});
+            }
+        } else if (auto * pCatchRet = dyn_cast<llvm::CatchReturnInst>(pInst)) {
+            // instruction_catchret(inst:P)
+            rel_instruction_catchret.add({inst_str});
+            // instruction_catchret_fromto(inst:P, pad:V, label:B)
+            Value * pCatchPad = pCatchRet->getCatchPad();
+            BasicBlock * pNormal = pCatchRet->getSuccessor();
+            rel_instruction_catchret_fromto.add({inst_str, rev_value_map[pCatchPad], rev_bb_map[pNormal]});
+        } else if (auto * pCleanupRet = dyn_cast<llvm::CleanupReturnInst>(pInst)) {
+            // instruction_cleanupret(inst:P)
+            rel_instruction_cleanupret.add({inst_str});
+            // instruction_cleanupret_from(inst:P, pad:V)
+            Value * pPad = pCleanupRet->getCleanupPad();
+            rel_instruction_cleanupret_from.add({inst_str, rev_value_map[pPad]});
+            // instruction_cleanupret_unwindlabel(inst:P, dest:B)
+            // instruction_cleanupret_unwindcaller(inst:P)
+            if (pCleanupRet->hasUnwindDest()) {
+                BasicBlock * pDefault = pCleanupRet->getUnwindDest();
+                rel_instruction_cleanupret_unwindlabel.add({inst_str, rev_bb_map[pDefault]});
+            } else {
+                rel_instruction_cleanupret_unwindcaller.add({inst_str});
+            }
+        } else if (auto * pUnreach = dyn_cast<llvm::UnreachableInst>(pInst)){
+            // instruction_unreachable(inst:P)
+            rel_instruction_unreachable.add({inst_str});
+        } else if (auto * pUnaryOp = dyn_cast<llvm::UnaryOperator>(pInst)) {
+            // instruction_op(inst:P)
+            rel_instruction_op.add({inst_str});
+            // instruction_op_res(inst:P, res:V)
+            rel_instruction_op_res.add({inst_str, rev_value_map[pUnaryOp]});
+            add_op_rel(pUnaryOp, pUnaryOp);
+        } else if (auto * pBinaryOp = dyn_cast<llvm::BinaryOperator>(pInst))  {
+            // instruction_op(inst:P)
+            rel_instruction_op.add({inst_str});
+            // instruction_op_res(inst:P, res:V)
+            rel_instruction_op_res.add({inst_str, rev_value_map[pBinaryOp]});
+            add_op_rel(pBinaryOp, pBinaryOp);
+        } else if (auto * pExtractElem = dyn_cast<llvm::ExtractElementInst>(pInst)) {
+            // instruction_op(inst:P)
+            rel_instruction_op.add({inst_str});
+            // instruction_op_res(inst:P, res:V)
+            rel_instruction_op_res.add({inst_str, rev_value_map[pExtractElem]});
+            add_op_rel(pExtractElem, pExtractElem);
+        } else if (auto * pInsertElem = dyn_cast<llvm::InsertElementInst>(pInst)) {
+            // instruction_op(inst:P)
+            rel_instruction_op.add({inst_str});
+            // instruction_op_res(inst:P, res:V)
+            rel_instruction_op_res.add({inst_str, rev_value_map[pInsertElem]});
+            add_op_rel(pInsertElem, pInsertElem);
+        } else if (auto * pShuffle = dyn_cast<llvm::ShuffleVectorInst>(pInst)) {
+            // instruction_op(inst:P)
+            rel_instruction_op.add({inst_str});
+            // instruction_op_res(inst:P, res:V)
+            rel_instruction_op_res.add({inst_str, rev_value_map[pShuffle]});
+            add_op_rel(pShuffle, pShuffle);
+        } else if (auto * pExtractVal = dyn_cast<llvm::ExtractValueInst>(pInst)) {
+            // instruction_op(inst:P)
+            rel_instruction_op.add({inst_str});
+            // instruction_op_res(inst:P, res:V)
+            rel_instruction_op_res.add({inst_str, rev_value_map[pExtractVal]});
+            add_op_rel(pExtractVal, pExtractVal);
+        } else if (auto * pInsertVal = dyn_cast<llvm::InsertValueInst>(pInst)) {
+            // instruction_op(inst:P)
+            rel_instruction_op.add({inst_str});
+            // instruction_op_res(inst:P, res:V)
+            rel_instruction_op_res.add({inst_str, rev_value_map[pInsertVal]});
+            add_op_rel(pInsertVal, pInsertVal);
+        } else if(auto * pAlloca = dyn_cast<llvm::AllocaInst>(pInst)){
+            // instruction_alloca(inst:P)
+            rel_instruction_alloca.add({inst_str});
+            // instruction_alloca_res(inst:P, res:V)`
+            Value * pRes = pAlloca;
+            rel_instruction_alloca_res.add({inst_str, rev_value_map[pRes]});
+            // instruction_alloca_type(inst:P, ty:T)
+            Type * pType = pAlloca->getAllocatedType();
+            rel_instruction_alloca_type.add({inst_str, rev_type_map[pType]});
+            // instruction_alloca_size(inst:P, n:V)
+            Value * pSize = pAlloca->getArraySize();
+            rel_instruction_alloca_size.add({inst_str, rev_value_map[pSize]});
+            // instruction_alloca_align(inst:P, align:C)
+            Align align = pAlloca->getAlign();
+            rel_instruction_alloca_align.add({inst_str, to_string(align.value())});
+            // instruction_alloca_addr_space(inst:P, addr:AS)
+            unsigned addrspace = pAlloca->getAddressSpace();
+            rel_instruction_alloca_addrspace.add({inst_str, to_string(addrspace)});
+        } else if(auto * pLoad = dyn_cast<llvm::LoadInst>(pInst)){
+            // instruction_load(inst:P)
+            rel_instruction_load.add({inst_str});
+            // instruction_load_volatile(inst:P)
+            if (pLoad->isVolatile())
+                rel_instruction_load_volatile.add({inst_str});
+            // instruction_load_ordering(inst:P, ord:ORD)
+            if (pLoad->isAtomic()) {
+                AtomicOrdering order = pLoad->getOrdering();
+                rel_instruction_load_ordering.add({inst_str, get_ordering_kind(order)});
+            }
+            // instruction_load_res(inst:P, res:V)
+            Value * pRes = pLoad;
+            rel_instruction_load_res.add({inst_str, rev_value_map[pRes]});
+            // instruction_load_ptr(inst:P, ptr:V)
+            Value * pPtr = pLoad->getPointerOperand();
+            rel_instruction_load_ptr.add({inst_str, rev_value_map[pPtr]});
+            // TODO: check pLoad->getPointerOperandType()
+            // instruction_load_align(inst:P, align:C)
+            Align align = pLoad->getAlign();
+            rel_instruction_load_align.add({inst_str, to_string(align.value())});
+        } else if(auto * pStore = dyn_cast<llvm::StoreInst>(pInst)){
+            // instruction_store(inst:P)
+            rel_instruction_store.add({inst_str});
+            // instruction_store_volatile(inst:P)
+            if (pStore->isVolatile())
+                rel_instruction_store_volatile.add({inst_str});
+            // instruction_store_ordering(inst:P, ord:ORD)
+            if (pStore->isAtomic()) {
+                AtomicOrdering order = pStore->getOrdering();
+                rel_instruction_store_ordering.add({inst_str, get_ordering_kind(order)});
+            }
+            // instruction_store_var(inst:P, v:V)
+            Value * pValue = pStore->getValueOperand();
+            rel_instruction_store_var.add({inst_str, rev_value_map[pValue]});
+            // instruction_store_addr(inst:P, ptr:V)
+            Value * pAddr = pStore->getPointerOperand();
+            rel_instruction_store_addr.add({inst_str, rev_value_map[pAddr]});
+            // TODO: check pStore->getPointerOperandType()
+            // instruction_store_align(inst:P, align:C)
+            Align align = pStore->getAlign();
+            rel_instruction_store_align.add({inst_str, to_string(align.value())});
+        } else if(auto * pFence = dyn_cast<llvm::FenceInst>(pInst)){
+            // instruction_fence(inst:P)
+            rel_instruction_fence.add({inst_str});
+            // instruction_fence_ordering(inst:P, ord:ORD)
+            AtomicOrdering order = pFence->getOrdering();
+            rel_instruction_fence_ordering.add({inst_str, get_ordering_kind(order)});
+        }
+        else if(auto * pCmpxchg = dyn_cast<llvm::AtomicCmpXchgInst>(pInst)){
+            // instruction_cmpxchg(inst:P)
+            rel_instruction_cmpxchg.add({inst_str});
+            // instruction_cmpxchg_weak(inst:P)
+            // instruction_cmpxchg_strong(inst:P)
+            if (pCmpxchg->isWeak())
+                rel_instruction_cmpxchg_weak.add({inst_str});
+            else
+                rel_instruction_cmpxchg_strong.add({inst_str});
+            // instruction_cmpxchg_volatile(inst:P)
+            if (pCmpxchg->isVolatile())
+                rel_instruction_cmpxchg_volatile.add({inst_str});
+            // instruction_cmpxchg_succ_ordering(inst:P, ord:ORD)
+            AtomicOrdering succ_ord = pCmpxchg->getSuccessOrdering();
+            rel_instruction_cmpxchg_succ_ordering.add({inst_str, get_ordering_kind(succ_ord)});
+            // instruction_cmpxchg_fail_ordering(inst:P, ord:ORD)
+            AtomicOrdering fail_ord = pCmpxchg->getFailureOrdering();
+            rel_instruction_cmpxchg_fail_ordering.add({inst_str, get_ordering_kind(fail_ord)});
+            // instruction_cmpxchg_addr(inst:P, ptr:V)
+            Value * pAddr = pCmpxchg->getPointerOperand();
+            rel_instruction_cmpxchg_addr.add({inst_str, rev_value_map[pAddr]});
+            // instruction_cmpxchg_cmp(inst:P, var:V)
+            Value * pCmp = pCmpxchg->getCompareOperand();
+            rel_instruction_cmpxchg_cmp.add({inst_str, rev_value_map[pCmp]});
+            // instruction_cmpxchg_new(inst:P, new:V)
+            Value * pNew = pCmpxchg->getNewValOperand();
+            rel_instruction_cmpxchg_new.add({inst_str, rev_value_map[pNew]});
+        } else if(auto * pAtomicrmw = dyn_cast<llvm::AtomicRMWInst>(pInst)){
+            // instruction_atomicrmw(inst:P)
+            rel_instruction_atomicrmw.add({inst_str});
+            // instruction_atomicrmw_volatile(inst:P)
+            if (pAtomicrmw->isVolatile())
+                rel_instruction_atomicrmw_volatile.add({inst_str});
+            // instruction_atomicrmw_ordering(inst:P, ord:ORD)
+            AtomicOrdering ord = pAtomicrmw->getOrdering();
+            rel_instruction_atomicrmw_ordering.add({inst_str, get_ordering_kind(ord)});
+            // instruction_atomicrmw_<bop>(inst:P, addr:V, val:V)
+            Value * pAddr = pAtomicrmw->getPointerOperand();
+            Value * pVal = pAtomicrmw->getPointerOperand();
+            AtomicRMWInst::BinOp op = pAtomicrmw->getOperation();
+            switch (op) {
+                case AtomicRMWInst::Xchg:
+                    rel_instruction_atomicrmw_xchg.add({inst_str, rev_value_map[pAddr], rev_value_map[pVal]});
+                    break;
+                case AtomicRMWInst::Add:
+                    rel_instruction_atomicrmw_add.add({inst_str, rev_value_map[pAddr], rev_value_map[pVal]});
+                    break;
+                case AtomicRMWInst::Sub:
+                    rel_instruction_atomicrmw_sub.add({inst_str, rev_value_map[pAddr], rev_value_map[pVal]});
+                    break;
+                case AtomicRMWInst::And:
+                    rel_instruction_atomicrmw_and.add({inst_str, rev_value_map[pAddr], rev_value_map[pVal]});
+                    break;
+                case AtomicRMWInst::Nand:
+                    rel_instruction_atomicrmw_nand.add({inst_str, rev_value_map[pAddr], rev_value_map[pVal]});
+                    break;
+                case AtomicRMWInst::Or:
+                    rel_instruction_atomicrmw_or.add({inst_str, rev_value_map[pAddr], rev_value_map[pVal]});
+                    break;
+                case AtomicRMWInst::Xor:
+                    rel_instruction_atomicrmw_xor.add({inst_str, rev_value_map[pAddr], rev_value_map[pVal]});
+                    break;
+                case AtomicRMWInst::Max:
+                    rel_instruction_atomicrmw_max.add({inst_str, rev_value_map[pAddr], rev_value_map[pVal]});
+                    break;
+                case AtomicRMWInst::Min:
+                    rel_instruction_atomicrmw_min.add({inst_str, rev_value_map[pAddr], rev_value_map[pVal]});
+                    break;
+                case AtomicRMWInst::UMax:
+                    rel_instruction_atomicrmw_umax.add({inst_str, rev_value_map[pAddr], rev_value_map[pVal]});
+                    break;
+                case AtomicRMWInst::UMin:
+                    rel_instruction_atomicrmw_umin.add({inst_str, rev_value_map[pAddr], rev_value_map[pVal]});
+                    break;
+                case AtomicRMWInst::FAdd:
+                    rel_instruction_atomicrmw_fadd.add({inst_str, rev_value_map[pAddr], rev_value_map[pVal]});
+                    break;
+                case AtomicRMWInst::FSub:
+                    rel_instruction_atomicrmw_fsub.add({inst_str, rev_value_map[pAddr], rev_value_map[pVal]});
+                    break;
+                case AtomicRMWInst::FMax:
+                    rel_instruction_atomicrmw_fmax.add({inst_str, rev_value_map[pAddr], rev_value_map[pVal]});
+                    break;
+                case AtomicRMWInst::FMin:
+                    rel_instruction_atomicrmw_fmin.add({inst_str, rev_value_map[pAddr], rev_value_map[pVal]});
+                    break;
+                case AtomicRMWInst::BAD_BINOP:
+                    rel_instruction_atomicrmw_bad.add({inst_str, rev_value_map[pAddr], rev_value_map[pVal]});
+                    break;
 
-
-
-    for(auto I : icmp_inst_ref){
-        sprintf(parsed_domain, "%sicmp_instruction(%s)\n", parsed_domain, I.first.c_str());
-        sprintf(parsed_relation, "%sicmp_instruction_condition(%s,%s)\n", parsed_relation, I.first.c_str(), I.second->getOperand(0)->getNameOrAsOperand().c_str());
-        sprintf(parsed_relation, "%sicmp_instruction_first_operand(%s,%s)\n", parsed_relation, I.first.c_str(), I.second->getOperand(2)->getNameOrAsOperand().c_str());
-        sprintf(parsed_relation, "%sicmp_instruction_second_operand(%s,%s)\n", parsed_relation, I.first.c_str(), I.second->getOperand(3)->getNameOrAsOperand().c_str());
-    }
-    for(auto I : fcmp_inst_ref){
-        sprintf(parsed_domain, "%sfcmp_instruction(%s)\n", parsed_domain, I.first.c_str());
-        sprintf(parsed_relation, "%sfcmp_instruction_condition(%s,%s)\n", parsed_relation, I.first.c_str(), I.second->getOperand(0)->getNameOrAsOperand().c_str());
-        sprintf(parsed_relation, "%sfcmp_instruction_first_operand(%s,%s)\n", parsed_relation, I.first.c_str(), I.second->getOperand(2)->getNameOrAsOperand().c_str());
-        sprintf(parsed_relation, "%sfcmp_instruction_second_operand(%s,%s)\n", parsed_relation, I.first.c_str(), I.second->getOperand(3)->getNameOrAsOperand().c_str());
-    }
-    for(auto I : phi_inst_ref){
-        sprintf(parsed_domain, "%sphi_instruction(%s)\n", parsed_domain, I.first.c_str());
-        sprintf(parsed_relation, "%sphi_instruction_type(%s,%s)\n", parsed_relation, I.first.c_str(), get_value_type(I.second->getType()).c_str());
-        sprintf(parsed_relation, "%sphi_instruction_npairs(%s,%u)\n", parsed_relation, I.first.c_str(), I.second->getNumOperands()/2);
-        for(unsigned int i = 0 ; i < I.second->getNumOperands()/2 ; i++){
-            // not sure if correct
-            sprintf(parsed_relation, "%sphi_instruction_pair_val(%s,%d,%s)\n", parsed_relation, I.first.c_str(), i, I.second->getOperand(2*i+1)->getNameOrAsOperand().c_str());
-            sprintf(parsed_relation, "%sphi_instruction_pair_label(%s,%d,%s)\n", parsed_relation, I.first.c_str(), i, I.second->getOperand(2*i+2)->getNameOrAsOperand().c_str());
+            }
+        } else if(auto * pGep = dyn_cast<llvm::GetElementPtrInst>(pInst)){
+            // instruction_op(inst:P)
+            rel_instruction_op.add({inst_str});
+            // instruction_op_res(inst:P, res:V)
+            rel_instruction_op_res.add({inst_str, rev_value_map[pGep]});
+            add_op_rel(pGep, pGep);
+        } else if(auto * pCast = dyn_cast<llvm::CastInst>(pInst)){
+            // instruction_op(inst:P)
+            rel_instruction_op.add({inst_str});
+            // instruction_op_res(inst:P, res:V)
+            rel_instruction_op_res.add({inst_str, rev_value_map[pCast]});
+            add_op_rel(pCast, pCast);
+        } else if(auto * pIcmp = dyn_cast<llvm::ICmpInst>(pInst)){
+            // instruction_op(inst:P)
+            rel_instruction_op.add({inst_str});
+            // instruction_op_res(inst:P, res:V)
+            rel_instruction_op_res.add({inst_str, rev_value_map[pIcmp]});
+            add_op_rel(pIcmp, pIcmp);
+        } else if(auto * pFcmp = dyn_cast<llvm::FCmpInst>(pInst)){
+            // instruction_op(inst:P)
+            rel_instruction_op.add({inst_str});
+            // instruction_op_res(inst:P, res:V)
+            rel_instruction_op_res.add({inst_str, rev_value_map[pFcmp]});
+            add_op_rel(pFcmp, pFcmp);
+        } else if(auto * pPhi = dyn_cast<llvm::PHINode>(pInst)){
+            // instruction_phi(inst:P)
+            rel_instruction_phi.add({inst_str});
+            // instruction_phi_res(inst:P, res:V)
+            Value * pRes = pPhi;
+            rel_instruction_phi_res.add({inst_str, rev_value_map[pRes]});
+            // instruction_phi_npairs(inst:P, n:Z)
+            unsigned num_ins = pPhi->getNumIncomingValues();
+            rel_instruction_phi_npairs.add({inst_str, to_string(num_ins)});
+            // instruction_phi_pair(inst:P, i:Z, var:V, l:B)
+            for (unsigned in_id = 0; in_id < num_ins; ++in_id) {
+                Value * pVar = pPhi->getIncomingValue(in_id);
+                BasicBlock * pLabel = pPhi->getIncomingBlock(in_id);
+                rel_instruction_phi_pair.add({inst_str, to_string(in_id), rev_value_map[pVar], rev_bb_map[pLabel]});
+            }
+        } else if (auto * pSelect = dyn_cast<llvm::SelectInst>(pInst)){
+            // instruction_select(inst:P)
+            rel_instruction_select.add({inst_str});
+            // instruction_select_expr(inst:P, res:V, cond:V, true_v:V, false_v:V)
+            Value * pRes = pSelect;
+            Value * pFlag = pSelect->getCondition();
+            Value * pTrue = pSelect->getTrueValue();
+            Value * pFalse = pSelect->getFalseValue();
+            rel_instruction_select_expr.add({inst_str, rev_value_map[pRes], rev_value_map[pFlag], rev_value_map[pTrue], rev_value_map[pFalse]});
+        } else if (auto * pFreeze = dyn_cast<llvm::FreezeInst>(pInst)){
+            // instruction_freeze(inst:P)
+            rel_instruction_freeze.add({inst_str});
+            // instruction_freeze_var(inst:P, var:V)
+            Value * pVar = pFreeze->getOperand(0);
+            rel_instruction_freeze_var.add({inst_str, rev_value_map[pVar]});
+        } else if(auto * pCall = dyn_cast<llvm::CallInst>(pInst)){
+            // instruction_call(inst:P)
+            rel_instruction_call.add({inst_str});
+            // instruction_call_void(inst:P)
+            // instruction_call_res(inst:P, var:V)
+            if (pCall->getType()->isVoidTy()) {
+                rel_instruction_call_void.add({inst_str});
+            } else {
+                Value * pRes = pCall;
+                rel_instruction_call_res.add({inst_str, rev_value_map[pRes]});
+            }
+            // instruction_call_static(inst:P, func:M)
+            // instruction_call_dynamic(inst:P, fptr:V)
+            if (Function * pFunc = pCall->getCalledFunction()) {
+                rel_instruction_call_static.add({inst_str, rev_func_map[pFunc]});
+            } else {
+                Value * pFptr = pCall->getCalledOperand();
+                rel_instruction_call_dynamic.add({inst_str, rev_value_map[pFptr]});
+            }
+            // instruction_call_nargs(inst:P, n:Z)
+            unsigned num_args = pCall->arg_size();
+            rel_instruction_call_nargs.add({inst_str, to_string(num_args)});
+            // instruction_call_arg(inst:p, i:Z, arg:V)
+            for (unsigned arg_idx = 0; arg_idx < num_args; ++arg_idx) {
+                Value * pArg = pCall->getArgOperand(arg_idx);
+                rel_instruction_call_arg.add({inst_str, to_string(arg_idx), rev_value_map[pArg]});
+            }
+            // TODO rel_instruction_call_sig
+            // TODO rel_instruction_call_tail
+            // TODO rel_instruction_call_fn_attr, rel_instruction_return_attr, rel_instruction_param_attr
+            // TODO rel_instruction_call_conv
+        } else if(auto * pVAArg = dyn_cast<llvm::VAArgInst>(pInst)){
+            // instruction_vaarg(inst:P)
+            rel_instruction_vaarg.add({inst_str});
+            // instruction_vaarg_expr(inst:P, res:V, list:V)
+            Value * pRes = pVAArg;
+            Value * pList = pVAArg->getPointerOperand();
+            rel_instruction_vaarg_expr.add({inst_str, rev_value_map[pRes], rev_value_map[pList]});
+        } else if (auto * pLandingPad = dyn_cast<llvm::LandingPadInst>(pInst)) {
+            // instruction_landingpad(inst:P)
+            rel_instruction_landingpad.add({inst_str});
+            // instruction_landingpad_res(inst:P, res:V)
+            Value * pRes = pLandingPad;
+            rel_instruction_landingpad_res.add({inst_str, rev_value_map[pRes]});
+            // instruction_landingpad_cleanup(inst:P)
+            // instruction_landingpad_nocleanup(inst:P)
+            if (pLandingPad->isCleanup())
+                rel_instruction_landingpad_cleanup.add({inst_str});
+            else
+                rel_instruction_landingpad_nocleanup.add({inst_str});
+            // instruction_landingpad_nclses(inst:P, n:Z)
+            unsigned num_clses = pLandingPad->getNumClauses();
+            rel_instruction_landingpad_nclses.add({inst_str, to_string(num_clses)});
+            // instruction_landingpad_cls_catch(inst:P, i:Z, v:V)
+            // instruction_landingpad_cls_filter(inst:P, i:Z, c:V)
+            for (unsigned cls_idx = 0; cls_idx < num_clses; ++cls_idx) {
+                if (pLandingPad->isCatch(cls_idx)) {
+                    Value * pVar = pLandingPad->getClause(cls_idx);
+                    rel_instruction_landingpad_cls_catch.add({inst_str, to_string(cls_idx), rev_value_map[pVar]});
+                } else {
+                    Constant * pConst = pLandingPad->getClause(cls_idx);
+                    rel_instruction_landingpad_cls_filter.add({inst_str, to_string(cls_idx), rev_value_map[pConst]});
+                }
+            }
+        } else if (auto * pCatchPad = dyn_cast<llvm::CatchPadInst>(pInst)) {
+            // instruction_catchpad(inst:P)
+            rel_instruction_catchpad.add({inst_str});
+            // instruction_catchpad_res(inst:P, res:V)
+            Value * pRes = pCatchPad;
+            rel_instruction_catchpad_res.add({inst_str, rev_value_map[pRes]});
+            // instruction_catchpad_within(inst:P, v:V)
+            Value * pCatch = pCatchPad->getCatchSwitch();
+            rel_instruction_catchpad_within.add({inst_str, rev_value_map[pCatch]});
+            // instruction_catchpad_nargs(inst:P, n:Z)
+            unsigned num_args = pCatchPad->getNumArgOperands();
+            rel_instruction_catchpad_nargs.add({inst_str, to_string(num_args)});
+            // instruction_catchpad_arg(inst:P, i:Z, arg:V)
+            for (unsigned arg_idx = 0; arg_idx < num_args; ++arg_idx) {
+                Value * pArg = pCatchPad->getArgOperand(arg_idx);
+                rel_instruction_catchpad_arg.add({inst_str, to_string(arg_idx), rev_value_map[pArg]});
+            }
+        } else if (auto * pCleanupPad = dyn_cast<llvm::CleanupPadInst>(pInst)) {
+            // instruction_cleanuppad(inst:P)
+            rel_instruction_cleanuppad.add({inst_str});
+            // instruction_cleanuppad_res(inst:P, res:V)
+            Value * pRes = pCleanupPad;
+            rel_instruction_cleanuppad_res.add({inst_str, rev_value_map[pRes]});
+            // instruction_cleanuppad_within(inst:P, parent:B)
+            Value * pWithin = pCleanupPad->getParentPad();
+            rel_instruction_cleanuppad_within.add({inst_str, rev_value_map[pWithin]});
+            // instruction_cleanuppad_nargs(inst:P, n:Z)
+            unsigned num_args = pCleanupPad->getNumArgOperands();
+            rel_instruction_cleanuppad_nargs.add({inst_str, to_string(num_args)});
+            // instruction_cleanuppad_arg(inst:P, i:Z, arg:V)
+            for (unsigned arg_idx = 0; arg_idx < num_args; ++arg_idx) {
+                Value * pArg = pCleanupPad->getArgOperand(arg_idx);
+                rel_instruction_cleanuppad_arg.add({inst_str, to_string(arg_idx), rev_value_map[pArg]});
+            }
         }
     }
-    for(auto I : sel_inst_ref){
-        sprintf(parsed_domain, "%sselect_instruction(%s)\n", parsed_domain, I.first.c_str());
-        sprintf(parsed_relation, "%sselect_instruction_condition(%s,%s)\n", parsed_relation, I.first.c_str(), I.second->getOperand(0)->getNameOrAsOperand().c_str());
-        sprintf(parsed_relation, "%sselect_instruction_true(%s,%s)\n", parsed_relation, I.first.c_str(), I.second->getTrueValue()->getNameOrAsOperand().c_str());
-        sprintf(parsed_relation, "%sselect_instruction_false(%s,%s)\n", parsed_relation, I.first.c_str(), I.second->getFalseValue()->getNameOrAsOperand().c_str());
-    }
-    for(auto I : va_arg_inst_ref){
-        sprintf(parsed_domain, "%sva_arg_instruction(%s)\n", parsed_domain, I.first.c_str());
-        sprintf(parsed_relation, "%sva_arg_instruction_type(%s,%s)\n", parsed_relation, I.first.c_str(), get_value_type(I.second->getType()).c_str());
-        sprintf(parsed_relation, "%sva_arg_instruction_va_list(%s,%s)\n", parsed_relation, I.first.c_str(), I.second->getPointerOperand()->getNameOrAsOperand().c_str());
-    }
-    for(auto I : call_inst_ref){
-        //string call_func_signature = "";
-        sprintf(parsed_domain, "%scall_instruction(%s)\n", parsed_domain, I.first.c_str());
-        sprintf(parsed_relation, "%scall_instruction_function(%s,%s)\n", parsed_relation, I.first.c_str(), I.second->getCalledFunction()->getNameOrAsOperand().c_str());
-        if(I.second->isTailCall())
-            sprintf(parsed_relation, "%scall_instruction_tail(%s)\n", parsed_relation, I.first.c_str());
-        sprintf(parsed_relation, "%scall_instruction_return_type(%s,%s)\n", parsed_relation, I.first.c_str(), get_value_type(I.second->getCalledFunction()->getReturnType()).c_str());
-        for(auto J : I.second->getCalledFunction()->getAttributes().getAttributes(llvm::AttributeList::FunctionIndex)){
-            sprintf(parsed_relation, "%scall_instruction_fn_attribute(%s,%s)\n", parsed_relation, I.first.c_str(), J.getAsString().c_str());
-        }
-        for(auto J : I.second->getCalledFunction()->getAttributes().getAttributes(llvm::AttributeList::ReturnIndex)){
-            sprintf(parsed_relation, "%scall_instruction_return_attribute(%s,%s)\n", parsed_relation, I.first.c_str(), J.getAsString().c_str());
-            //call_func_signature += get_value_type(I.second->getCalledFunction()->getReturnType());
-        }
-        unsigned int param_num = I.second->arg_size();
-        for(unsigned j = 0 ; j < param_num ; j++){
-            sprintf(parsed_relation, "%scall_instruction_arg(%s,%u,%s)\n", parsed_relation, I.first.c_str(), j, I.second->getArgOperand(j)->getNameOrAsOperand().c_str());
-            for(auto J : I.second->getCalledFunction()->getAttributes().getAttributes(j+1)){
-                sprintf(parsed_relation, "%scall_instruction_param_attribute(%s,%u,%s)\n", parsed_relation, I.first.c_str(), j, J.getAsString().c_str());
-            }
-            /*
-            if(j == 0){
-                call_func_signature += "(";
-            }
-            else{
-                call_func_signature += " ";
-            }
-            call_func_signature += get_value_type(I.second->getArgOperand(j)->getType());
-            if(j == param_num - 1){
-                call_func_signature += ")";
-            }
-            /
-            //string streaming maybe more efficient
-            
-        }
-        std::string func_type = formatv("{0}", * (I.second->getFunctionType()));
-        sprintf(parsed_relation, "%scall_instruction_calling_convention(%s,%u)\n", parsed_relation, I.first.c_str(), I.second->getCallingConv());
-        sprintf(parsed_relation, "%scall_instruction_signature(%s,%s)\n", parsed_relation, I.first.c_str(), func_type.c_str());
-        sprintf(parsed_relation, "%s%s_call_instruction(%s)\n", parsed_relation, I.second->isIndirectCall()?"indirect":"direct", I.first.c_str());
-
-    }
-     */
 }
 
-
-string IRManager::get_value_type(llvm::Type *t){
-    // TODO: refine this
-    switch(t->getTypeID()){
-        case llvm::Type::HalfTyID:
-            return "float";
-            //printf("    pointer:id:%s, component type:float\n",i.first.c_str());
-            break;
-        case llvm::Type::BFloatTyID:
-            return "float";
-            //printf("    pointer:id:%s, component type:float\n",i.first.c_str());
-            break;
-        case llvm::Type::FloatTyID:
-            return "float";
-            //printf("    pointer:id:%s, component type:float\n",i.first.c_str());
-            break;
-        case llvm::Type::DoubleTyID:
-            return "float";
-            //printf("    pointer:id:%s, component type:float\n",i.first.c_str());
-            break;
-        case llvm::Type::X86_FP80TyID:
-            return "float";
-            //printf("    pointer:id:%s, component type:float\n",i.first.c_str());
-            break;
-        case llvm::Type::FP128TyID:
-            return "float";
-            //printf("    pointer:id:%s, component type:float\n",i.first.c_str());
-            break;
-        case llvm::Type::PPC_FP128TyID:
-            return "float";
-            //printf("    pointer:id:%s, component type:float\n",i.first.c_str());
-            break;
-        case llvm::Type::VoidTyID:
-            return "void";
-            //printf("    pointer:id:%s, component type:void\n",i.first.c_str());
-            break;
-        case llvm::Type::LabelTyID:
-            return "label";
-            //printf("    pointer:id:%s, component type:label\n",i.first.c_str());
-            break;
-        case llvm::Type::FunctionTyID:
-            return "function";
-            break;
-        case llvm::Type::MetadataTyID:
-            return "metadata";
-            //printf("    pointer:id:%s, component type:metadata\n",i.first.c_str());
-            break;
-        case llvm::Type::TokenTyID:
-            return "token";
-            //printf("    pointer:id:%s, component type:token\n",i.first.c_str());
-            break;
-        case llvm::Type::IntegerTyID:
-            return "integer";
-            //printf("    pointer:id:%s, component type:integer\n",i.first.c_str());
-            break;
-        case llvm::Type::PointerTyID:
-            return "pointer";
-            //printf("    pointer:id:%s, component type:pointer\n",i.first.c_str());
-            break;
-        case llvm::Type::StructTyID:
-            return "struct";
-            //printf("    pointer:id:%s, component type:struct\n",i.first.c_str());
-            break;
-        case llvm::Type::ArrayTyID:
-            return "array";
-            //printf("    pointer:id:%s, component type:array\n",i.first.c_str());
-            break;
-        case llvm::Type::FixedVectorTyID:
-            return "vector";
-            //printf("    pointer:id:%s, component type:vector\n",i.first.c_str());
-            break;
-        case llvm::Type::ScalableVectorTyID:
-            return "vector";
-            //printf("    pointer:id:%s, component type:vector\n",i.first.c_str());
-            break;
-        default:
-            printf("unknown\n");
-            return "unknown";
-            break;
-    }
-    return "";
-}
 
 string IRManager::get_conv_kind(llvm::CallingConv::ID id){
     return "";

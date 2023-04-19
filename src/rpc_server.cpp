@@ -14,6 +14,8 @@ using namespace std;
 class LLVMProvider final : public analysis::Provider::Service {
 private:
     map<string, unique_ptr<IRManager>> map_manager;
+    map<string, unique_ptr<llvm::LLVMContext>> map_ctx;
+    map<string, llvm::SMDiagnostic> map_diag;
 
 public:
     ~LLVMProvider() override = default;
@@ -31,9 +33,10 @@ public:
             if (request->option().property().find("tea.source") == request->option().property().end()) {
                 response->set_msg("FAIL: No source file specified");
             } else {
-                unique_ptr<IRManager> irm = make_unique<IRManager>(request->option().property().at("tea.source"));
-                string name = irm->get_name();
-                map_manager[name] = std::move(irm);
+                const string& proj_id = request->project_id();
+                map_ctx.try_emplace(proj_id, make_unique<llvm::LLVMContext>());
+                string src_name = request->option().property().at("tea.source");
+                map_manager[proj_id] = unique_ptr<IRManager>(IRManager::createFromFile(src_name, map_diag[proj_id], *map_ctx[proj_id]));
                 // TODO: run analysis
                 response->set_msg("SUCCESS");
             }
@@ -41,10 +44,7 @@ public:
         return grpc::Status::OK;
     }
 
-    grpc::Status Prove(::grpc::ServerContext *context, const analysis::ProveRequest *request,
-                       analysis::ProveResponse *response) override {
-        return Service::Prove(context, request, response);
-    }
+
 
     grpc::Status Instrument(::grpc::ServerContext *context, const analysis::InstrumentRequest *request,
                             analysis::InstrumentResponse *response) override {

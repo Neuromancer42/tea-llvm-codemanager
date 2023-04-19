@@ -38,12 +38,6 @@ include_directories(include)
 add_library(irmanager_lib lib/irmanger.cpp)
 target_link_libraries(irmanager_lib ${llvm_libs})
 
-add_executable(irmanager_standalone src/standalone.cpp)
-target_link_libraries(irmanager_standalone irmanager_lib)
-
-add_executable(irmanager_parser parser/main.cpp)
-target_link_libraries(irmanager_parser irmanager_lib)
-
 option(BUILD_RPC "build RPC server" ON)
 if(BUILD_RPC)
     find_package(Protobuf REQUIRED)
@@ -90,3 +84,9 @@ if(BUILD_RPC)
     target_include_directories(irmanager_server PUBLIC ${TEA_SERVICE_SRC_DIR})
     target_link_libraries(irmanager_server irmanager_lib gRPC::grpc++_reflection gRPC::grpc++ protobuf::libprotobuf)
 endif()
+
+add_executable(irmanager_standalone src/standalone.cpp)
+target_link_libraries(irmanager_standalone irmanager_lib)
+
+add_executable(irmanager_testparser test/test-parser.cpp)
+target_link_libraries(irmanager_testparser irmanager_lib)

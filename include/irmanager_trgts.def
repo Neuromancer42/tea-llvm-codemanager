@@ -1,0 +1,1196 @@
+// No Include Guard!
+
+// This file describes domains and relations used by class IRManager
+// These info will be used to generate fields of class IRManager and generate a AnalysisInfo struct
+
+#ifndef HANDLE_PRODUCE_DOM
+#define HANDLE_PRODUCE_DOM(name, desc)
+#endif
+
+// Since there is no handful tooling for iterating over lists of domain-ids, we use a DOM macro to wrap around it
+#ifndef HANDLE_PRODUCE_REL
+#define HANDLE_PRODUCE_REL(name, doms, ...)
+#define DOM(name)
+#else
+#ifndef DOM
+#define DOM(name)
+#endif
+#endif
+
+HANDLE_PRODUCE_DOM( B,
+                    "basic blocks"
+)
+HANDLE_PRODUCE_DOM( P,
+                    "instructions"
+)
+HANDLE_PRODUCE_DOM( V,
+                    "variables"
+)
+HANDLE_PRODUCE_DOM( T,
+                    "llvm types"
+)
+HANDLE_PRODUCE_DOM( M,
+                    "functions"
+)
+HANDLE_PRODUCE_DOM( C,
+                    "constants"
+)
+HANDLE_PRODUCE_DOM( Z,
+                    "cardinals"
+)
+// "ORD" = "atomic orderings
+// "AS" = "address space
+
+/* control flow */
+HANDLE_PRODUCE_REL( basicblock_pred,
+                    "basicblock_pred(bb_pred:B, bb_next:B)",
+                    DOM(B), DOM(B)
+)
+HANDLE_PRODUCE_REL( basicblock_entry,
+                    "basicblock_entry(bb:B, entry_inst:P)",
+                    DOM(B), DOM(P)
+)
+HANDLE_PRODUCE_REL( basicblock_exit,
+                    "basicblock_exit(bb:B, exit_inst:P)",
+                    DOM(B), DOM(P)
+)
+HANDLE_PRODUCE_REL( instruction_basicblock,
+                    "instruction_basicblock(inst:P, bb:B), an instruction `inst` belongs to a basicblock `bb`",
+                    DOM(P), DOM(B)
+)
+HANDLE_PRODUCE_REL( instruction_next,
+                    "instruction_next(inst:P, next:P)",
+                    DOM(P), DOM(P)
+)
+
+/* types */
+HANDLE_PRODUCE_REL( void_type
+                    , "",
+                    DOM(T)
+)
+HANDLE_PRODUCE_REL( fn_type,
+                    "",
+                    DOM(T)
+)
+HANDLE_PRODUCE_REL( fn_type_varargs,
+                    "fn_type_varargs(ty:T), this function type `ty` can accept variable arguments",
+                    DOM(T)
+)
+HANDLE_PRODUCE_REL( fn_type_return,
+                    "fn_type_return(fn_ty:T, ret_ty:T), this function type `fn_ty` has return type `ret_ty`",
+                    DOM(T), DOM(T)
+)
+HANDLE_PRODUCE_REL( fn_type_nparams,
+                    "fn_type_nparams(fn_ty:T, n:Z), this function type `fn_ty` has `n` parameters",
+                    DOM(T), DOM(Z)
+)
+HANDLE_PRODUCE_REL( fn_type_param,
+                    "fn_type_param(fn_ty:T, i:Z, param_ty:T), the `i`-th parameter of function type `fn_ty` has type `param_ty`",
+                    DOM(T), DOM(Z), DOM(T)
+)
+HANDLE_PRODUCE_REL( integer_type,
+                    "",
+                    DOM(T)
+)
+HANDLE_PRODUCE_REL( floatingpoint_type,
+                    "",
+                    DOM(T)
+)
+HANDLE_PRODUCE_REL( pointer_type,
+                    "",
+                    DOM(T)
+)
+HANDLE_PRODUCE_REL( pointer_type_opaque,
+                    "pointer_type_opaque(ty:T), the pointer type `ty` is opaque.",
+                    DOM(T)
+)
+// Warning: as of LLVM >= 15, typed-pointers are deprecated
+HANDLE_PRODUCE_REL( pointer_type_component,
+                    "pointer_type_component(ty:T, pointee_ty:T)",
+                    DOM(T), DOM(T)
+)
+//HANDLE_PRODUCE_REL( pointer_type_addrspace,
+//                    "",
+//                    DOM(T), DOM(AS)
+//)
+HANDLE_PRODUCE_REL( vector_type,
+                    "",
+                    DOM(T)
+)
+HANDLE_PRODUCE_REL( vector_type_size,
+                    "vector_type_size(ty:T, size:C), a fixed-length vector type `ty` has length `size`",
+                    DOM(T), DOM(C)
+)
+// TODO: learn more about scalable vector
+HANDLE_PRODUCE_REL( vector_type_min_size,
+                    "vector_type_min_size(ty:T, min_size:C), a scalable vector type `ty` has minimum length `min_size`",
+                    DOM(T), DOM(C)
+)
+HANDLE_PRODUCE_REL( vector_type_component,
+                    "vector_type_component(ty:T, comp_ty:T)",
+                    DOM(T), DOM(T)
+)
+HANDLE_PRODUCE_REL( array_type,
+                    "",
+                    DOM(T)
+)
+HANDLE_PRODUCE_REL( array_type_size,
+                    "",
+                    DOM(T), DOM(C)
+)
+HANDLE_PRODUCE_REL( array_type_component,
+                    "array_type_component(ty:T, comp_ty:T)",
+                    DOM(T), DOM(T)
+)
+HANDLE_PRODUCE_REL( struct_type,
+                    "",
+                    DOM(T)
+)
+//HANDLE_PRODUCE_REL( struct_type_name,
+//                    "struct_type_name(ty:T, name:??), a struct type my have a name",
+//                    DOM(T), DOM(??)
+//)
+HANDLE_PRODUCE_REL( opaque_struct_type,
+                    "opaque_struct_type(ty:T), a struct type may be opaque",
+                    DOM(T)
+)
+HANDLE_PRODUCE_REL( struct_type_nfields,
+                    "struct_type_nfields(ty:T, n:Z), a struct type `ty` has `n` fields",
+                    DOM(T), DOM(Z)
+)
+HANDLE_PRODUCE_REL( struct_type_field,
+                    "struct_type_field(ty:T, i:Z, f_ty:T)",
+                    DOM(T), DOM(Z),DOM(T)
+)
+HANDLE_PRODUCE_REL( label,
+                    "",
+                    DOM(T)
+)
+HANDLE_PRODUCE_REL( token,
+                    "",
+                    DOM(T)
+)
+HANDLE_PRODUCE_REL( metadata,
+                    "",
+                    DOM(T)
+)
+HANDLE_PRODUCE_REL( x86mmx,
+                    "",
+                    DOM(T)
+)
+HANDLE_PRODUCE_REL( x86amx,
+                    "",
+                    DOM(T)
+)
+
+/* variables */
+HANDLE_PRODUCE_REL( variable_type,
+                    "",
+                    DOM(V), DOM(T)
+)
+HANDLE_PRODUCE_REL( variable_const_int,
+                    "",
+                    DOM(V), DOM(C)
+)
+HANDLE_PRODUCE_REL( variable_const_fp,
+                    "",
+                    DOM(V), DOM(C)
+)
+HANDLE_PRODUCE_REL( variable_const_ptr_null,
+                    "",
+                    DOM(V)
+)
+HANDLE_PRODUCE_REL( variable_const_token_none,
+                    "",
+                    DOM(V)
+)
+HANDLE_PRODUCE_REL( variable_const_struct,
+                    "",
+                    DOM(V)
+)
+HANDLE_PRODUCE_REL( variable_const_struct_nfields,
+                    "",
+                    DOM(V), DOM(Z)
+)
+HANDLE_PRODUCE_REL( variable_const_struct_field,
+                    "",
+                    DOM(V), DOM(Z), DOM(V)
+)
+HANDLE_PRODUCE_REL( variable_const_array,
+                    "",
+                    DOM(V)
+)
+HANDLE_PRODUCE_REL( variable_const_array_len,
+                    "",
+                    DOM(V), DOM(C)
+)
+HANDLE_PRODUCE_REL( variable_const_array_elem,
+                    "",
+                    DOM(V), DOM(V)
+)
+HANDLE_PRODUCE_REL( variable_const_vector,
+                    "",
+                    DOM(V)
+)
+HANDLE_PRODUCE_REL( variable_const_vector_len,
+                    "",
+                    DOM(V), DOM(C)
+)
+HANDLE_PRODUCE_REL( variable_const_vector_elem,
+                    "",
+                    DOM(V), DOM(V)
+)
+HANDLE_PRODUCE_REL( variable_const_aggzero,
+                    "",
+                    DOM(V)
+)
+HANDLE_PRODUCE_REL( variable_undef,
+                    "",
+                    DOM(V)
+)
+HANDLE_PRODUCE_REL( variable_undef_poison,
+                    "",
+                    DOM(V)
+)
+HANDLE_PRODUCE_REL( variable_global,
+                    "",
+                    DOM(V)
+)
+HANDLE_PRODUCE_REL( variable_global_type,
+                    "",
+                    DOM(V), DOM(T)
+)
+//HANDLE_PRODUCE_REL( variable_global_linkage,
+//                    "",
+//                    DOM(V), DOM(L)
+//)
+HANDLE_PRODUCE_REL( variable_global_align,
+                    "",
+                    DOM(V), DOM(C)
+)
+HANDLE_PRODUCE_REL( variable_global_init,
+                    "",
+                    DOM(V), DOM(V)
+)
+HANDLE_PRODUCE_REL( variable_alias
+                    , "",
+                    DOM(V)
+)
+HANDLE_PRODUCE_REL( variable_alias_aliasee,
+                    "",
+                    DOM(V), DOM(V)
+)
+HANDLE_PRODUCE_REL( variable_ifunc,
+                    "",
+                    DOM(V)
+)
+HANDLE_PRODUCE_REL( variable_ifunc_resolver,
+                    "",
+                    DOM(V), DOM(M)
+)
+HANDLE_PRODUCE_REL( variable_func
+                    , "",
+                    DOM(V), DOM(M)
+)
+HANDLE_PRODUCE_REL( variable_blockaddr,
+                    "",
+                    DOM(V), DOM(B)
+)
+HANDLE_PRODUCE_REL( variable_constexpr,
+                    "",
+                    DOM(V)
+)
+HANDLE_PRODUCE_REL( operation_unary_fneg,
+                    "operation_unary_fneg(res:V, inner:V)",
+                    DOM(V), DOM(V)
+)
+HANDLE_PRODUCE_REL( operation_binary_add,
+                    "operation_binary_add(res:V, left:V, right:V)",
+                    DOM(V), DOM(V), DOM(V)
+)
+HANDLE_PRODUCE_REL( operation_binary_fadd,
+                    "operation_binary_fadd(res:V, left:V, right:V)",
+                    DOM(V), DOM(V), DOM(V)
+)
+HANDLE_PRODUCE_REL( operation_binary_sub,
+                    "operation_binary_sub(res:V, left:V, right:V)",
+                    DOM(V), DOM(V), DOM(V)
+)
+HANDLE_PRODUCE_REL( operation_binary_fsub,
+                    "operation_binary_fsub(res:V, left:V, right:V)",
+                    DOM(V), DOM(V), DOM(V)
+)
+HANDLE_PRODUCE_REL( operation_binary_mul,
+                    "operation_binary_mul(res:V, left:V, right:V)",
+                    DOM(V), DOM(V), DOM(V)
+)
+HANDLE_PRODUCE_REL( operation_binary_fmul,
+                    "operation_binary_fmul(res:V, left:V, right:V)",
+                    DOM(V), DOM(V), DOM(V)
+)
+HANDLE_PRODUCE_REL( operation_binary_udiv,
+                    "operation_binary_udiv(res:V, left:V, right:V)",
+                    DOM(V), DOM(V), DOM(V)
+)
+HANDLE_PRODUCE_REL( operation_binary_sdiv,
+                    "operation_binary_sdiv(res:V, left:V, right:V)",
+                    DOM(V), DOM(V), DOM(V)
+)
+HANDLE_PRODUCE_REL( operation_binary_fdiv,
+                    "operation_binary_fdiv(res:V, left:V, right:V)",
+                    DOM(V), DOM(V), DOM(V)
+)
+HANDLE_PRODUCE_REL( operation_binary_urem,
+                    "operation_binary_urem(res:V, left:V, right:V)",
+                    DOM(V), DOM(V), DOM(V)
+)
+HANDLE_PRODUCE_REL( operation_binary_srem,
+                    "operation_binary_srem(res:V, left:V, right:V)",
+                    DOM(V), DOM(V), DOM(V)
+)
+HANDLE_PRODUCE_REL( operation_binary_frem,
+                    "operation_binary_frem(res:V, left:V, right:V)",
+                    DOM(V), DOM(V), DOM(V)
+)
+HANDLE_PRODUCE_REL( operation_binary_shl,
+                    "operation_binary_shl(res:V, left:V, right:V)",
+                    DOM(V), DOM(V), DOM(V)
+)
+HANDLE_PRODUCE_REL( operation_binary_lshr,
+                    "operation_binary_lshr(res:V, left:V, right:V)",
+                    DOM(V), DOM(V), DOM(V)
+)
+HANDLE_PRODUCE_REL( operation_binary_ashr,
+                    "operation_binary_ashr(res:V, left:V, right:V)",
+                    DOM(V), DOM(V), DOM(V)
+)
+HANDLE_PRODUCE_REL( operation_binary_and,
+                    "operation_binary_and(res:V, left:V, right:V)",
+                    DOM(V), DOM(V), DOM(V)
+)
+HANDLE_PRODUCE_REL( operation_binary_or,
+                    "operation_binary_or(res:V, left:V, right:V)",
+                    DOM(V), DOM(V), DOM(V)
+)
+HANDLE_PRODUCE_REL( operation_binary_xor,
+                    "operation_binary_xor(res:V, left:V, right:V)",
+                    DOM(V), DOM(V), DOM(V)
+)
+HANDLE_PRODUCE_REL( operation_extractelement,
+                    "operation_extractelement(inst:P, res:V, base:V, idx:V)",
+                    DOM(V), DOM(V), DOM(V)
+)
+HANDLE_PRODUCE_REL( operation_insertelement,
+                    "operation_insertelement_expr(res:V, base:V, elem:V, idx:V)",
+                    DOM(V), DOM(V), DOM(V), DOM(V)
+)
+HANDLE_PRODUCE_REL( operation_shufflevector,
+                    "",
+                    DOM(V), DOM(V), DOM(V), DOM(V)
+)
+HANDLE_PRODUCE_REL( operation_extractvalue_base,
+                    "",
+                    DOM(V), DOM(V)
+)
+HANDLE_PRODUCE_REL( operation_extractvalue_nindices,
+                    "",
+                    DOM(V), DOM(Z)
+)
+HANDLE_PRODUCE_REL( operation_extractvalue_index,
+                    "operation_extractvalue_index(res:V, i:Z, id:Z)",
+                    DOM(V), DOM(Z), DOM(Z)
+)
+HANDLE_PRODUCE_REL( operation_insertvalue_base,
+                    "",
+                    DOM(V), DOM(V)
+)
+HANDLE_PRODUCE_REL( operation_insertvalue_elem,
+                    "",
+                    DOM(V), DOM(V)
+)
+HANDLE_PRODUCE_REL( operation_insertvalue_nindices,
+                    "",
+                    DOM(V), DOM(Z)
+)
+HANDLE_PRODUCE_REL( operation_insertvalue_index,
+                    "operation_insertvalue_index(res:V, i:Z, id:Z)",
+                    DOM(V), DOM(Z), DOM(Z)
+)
+HANDLE_PRODUCE_REL( operation_gep_inbounds,
+                    "",
+                    DOM(V)
+)
+HANDLE_PRODUCE_REL( operation_gep_base,
+                    "",
+                    DOM(V), DOM(V)
+)
+HANDLE_PRODUCE_REL( operation_gep_type
+                    , "",
+                    DOM(V), DOM(T)
+)
+HANDLE_PRODUCE_REL( operation_gep_nindices,
+                    "",
+                    DOM(V), DOM(Z)
+)
+HANDLE_PRODUCE_REL( operation_gep_index_field,
+                    "",
+                    DOM(V), DOM(Z), DOM(Z)
+)
+HANDLE_PRODUCE_REL( operation_gep_index_offset,
+                    "",
+                    DOM(V), DOM(Z), DOM(V)
+)
+HANDLE_PRODUCE_REL( operation_cast_trunc,
+                    "operation_cast_trunc(res:V, src:V, from_ty:T, to_ty:T)",
+                    DOM(V), DOM(V), DOM(T), DOM(T)
+)
+HANDLE_PRODUCE_REL( operation_cast_zext,
+                    "operation_cast_zext(res:V, src:V, from_ty:T, to_ty:T)",
+                    DOM(V), DOM(V), DOM(T), DOM(T)
+)
+HANDLE_PRODUCE_REL( operation_cast_sext,
+                    "operation_cast_sext(res:V, src:V, from_ty:T, to_ty:T)",
+                    DOM(V), DOM(V), DOM(T), DOM(T)
+)
+HANDLE_PRODUCE_REL( operation_cast_fptoui,
+                    "operation_cast_fptoui(res:V, src:V, from_ty:T, to_ty:T)",
+                    DOM(V), DOM(V), DOM(T), DOM(T)
+)
+HANDLE_PRODUCE_REL( operation_cast_fptosi,
+                    "operation_cast_fptosi(res:V, src:V, from_ty:T, to_ty:T)",
+                    DOM(V), DOM(V), DOM(T), DOM(T)
+)
+HANDLE_PRODUCE_REL( operation_cast_uitofp,
+                    "operation_cast_uitofp(res:V, src:V, from_ty:T, to_ty:T)",
+                    DOM(V), DOM(V), DOM(T), DOM(T)
+)
+HANDLE_PRODUCE_REL( operation_cast_sitofp,
+                    "operation_cast_sitofp(res:V, src:V, from_ty:T, to_ty:T)",
+                    DOM(V), DOM(V), DOM(T), DOM(T)
+)
+HANDLE_PRODUCE_REL( operation_cast_fptrunc,
+                    "operation_cast_fptrunc(res:V, src:V, from_ty:T, to_ty:T)",
+                    DOM(V), DOM(V), DOM(T), DOM(T)
+)
+HANDLE_PRODUCE_REL( operation_cast_fpext,
+                    "operation_cast_fpext(res:V, src:V, from_ty:T, to_ty:T)",
+                    DOM(V), DOM(V), DOM(T), DOM(T)
+)
+HANDLE_PRODUCE_REL( operation_cast_ptrtoint,
+                    "operation_cast_ptrtoint(res:V, src:V, from_ty:T, to_ty:T)",
+                    DOM(V), DOM(V), DOM(T), DOM(T)
+)
+HANDLE_PRODUCE_REL( operation_cast_inttoptr,
+                    "operation_cast_inttoptr(res:V, src:V, from_ty:T, to_ty:T)",
+                    DOM(V), DOM(V), DOM(T), DOM(T)
+)
+HANDLE_PRODUCE_REL( operation_cast_bitcast,
+                    "operation_cast_bitcast(res:V, src:V, from_ty:T, to_ty:T)",
+                    DOM(V), DOM(V), DOM(T), DOM(T)
+)
+HANDLE_PRODUCE_REL( operation_cast_addrspacecast,
+                    "operation_cast_addrspacecast(res:V, src:V, from_ty:T, to_ty:T)",
+                    DOM(V), DOM(V), DOM(T), DOM(T)
+)
+HANDLE_PRODUCE_REL( operation_icmp_eq,
+                    "",
+                    DOM(V), DOM(V), DOM(V)
+)
+HANDLE_PRODUCE_REL( operation_icmp_ne,
+                    "",
+                    DOM(V), DOM(V), DOM(V)
+)
+HANDLE_PRODUCE_REL( operation_icmp_ugt,
+                    "",
+                    DOM(V), DOM(V), DOM(V)
+)
+HANDLE_PRODUCE_REL( operation_icmp_uge,
+                    "",
+                    DOM(V), DOM(V), DOM(V)
+)
+HANDLE_PRODUCE_REL( operation_icmp_ult,
+                    "",
+                    DOM(V), DOM(V), DOM(V)
+)
+HANDLE_PRODUCE_REL( operation_icmp_ule,
+                    "",
+                    DOM(V), DOM(V), DOM(V)
+)
+HANDLE_PRODUCE_REL( operation_icmp_sgt,
+                    "",
+                    DOM(V), DOM(V), DOM(V)
+)
+HANDLE_PRODUCE_REL( operation_icmp_sge,
+                    "",
+                    DOM(V), DOM(V), DOM(V)
+)
+HANDLE_PRODUCE_REL( operation_icmp_slt,
+                    "",
+                    DOM(V), DOM(V), DOM(V)
+)
+HANDLE_PRODUCE_REL( operation_icmp_sle,
+                    "",
+                    DOM(V), DOM(V), DOM(V)
+)
+HANDLE_PRODUCE_REL( operation_fcmp_false,
+                    "",
+                    DOM(V), DOM(V), DOM(V)
+)
+HANDLE_PRODUCE_REL( operation_fcmp_oeq,
+                    "",
+                    DOM(V), DOM(V), DOM(V)
+)
+HANDLE_PRODUCE_REL( operation_fcmp_ogt,
+                    "",
+                    DOM(V), DOM(V), DOM(V)
+)
+HANDLE_PRODUCE_REL( operation_fcmp_oge,
+                    "",
+                    DOM(V), DOM(V), DOM(V)
+)
+HANDLE_PRODUCE_REL( operation_fcmp_olt,
+                    "",
+                    DOM(V), DOM(V), DOM(V)
+)
+HANDLE_PRODUCE_REL( operation_fcmp_ole,
+                    "",
+                    DOM(V), DOM(V), DOM(V)
+)
+HANDLE_PRODUCE_REL( operation_fcmp_one,
+                    "",
+                    DOM(V), DOM(V), DOM(V)
+)
+HANDLE_PRODUCE_REL( operation_fcmp_ord,
+                    "",
+                    DOM(V), DOM(V), DOM(V)
+)
+HANDLE_PRODUCE_REL( operation_fcmp_ueq,
+                    "",
+                    DOM(V), DOM(V), DOM(V)
+)
+HANDLE_PRODUCE_REL( operation_fcmp_ugt,
+                    "",
+                    DOM(V), DOM(V), DOM(V)
+)
+HANDLE_PRODUCE_REL( operation_fcmp_uge,
+                    "",
+                    DOM(V), DOM(V), DOM(V)
+)
+HANDLE_PRODUCE_REL( operation_fcmp_ult,
+                    "",
+                    DOM(V), DOM(V), DOM(V)
+)
+HANDLE_PRODUCE_REL( operation_fcmp_ule,
+                    "",
+                    DOM(V), DOM(V), DOM(V)
+)
+HANDLE_PRODUCE_REL( operation_fcmp_une,
+                    "",
+                    DOM(V), DOM(V), DOM(V)
+)
+HANDLE_PRODUCE_REL( operation_fcmp_uno,
+                    "",
+                    DOM(V), DOM(V), DOM(V)
+)
+HANDLE_PRODUCE_REL( operation_fcmp_true,
+                    "",
+                    DOM(V), DOM(V), DOM(V)
+)
+
+/* functions */
+HANDLE_PRODUCE_REL( main_function,
+                    "",
+                    DOM(M)
+)
+HANDLE_PRODUCE_REL( function_type,
+                    "",
+                    DOM(M), DOM(T)
+)
+//HANDLE_PRODUCE_REL( function_name,
+//                    "",
+//                    DOM(M), DOM(V)
+//)
+//HANDLE_PRODUCE_REL( function_linkage,
+//                    "",
+//                    DOM(M), DOM(L)
+//)
+HANDLE_PRODUCE_REL( function_nparams,
+                    "",
+                    DOM(M), DOM(Z)
+)
+HANDLE_PRODUCE_REL( function_param,
+                    "",
+                    DOM(M), DOM(Z), DOM(V)
+)
+HANDLE_PRODUCE_REL( function_extern,
+                    "",
+                    DOM(M)
+)
+HANDLE_PRODUCE_REL( function_entry,
+                    "",
+                    DOM(M), DOM(B)
+)
+//        ProgramRel rel_function_visibility;
+//        ProgramRel rel_function_calling_convention;
+//        ProgramRel rel_function_unnamed_addr;
+//        ProgramRel rel_function_alignment;
+//        ProgramRel rel_function_gc;
+//        ProgramRel rel_function_pers_fn;
+//        ProgramRel rel_function_attribute;
+//        ProgramRel rel_function_return_attribute;
+//        ProgramRel rel_function_param_attribute;
+//        ProgramRel rel_function_section;
+
+/* instructions */
+HANDLE_PRODUCE_REL( instruction_ret,
+                    "",
+                    DOM(P)
+)
+HANDLE_PRODUCE_REL( instruction_ret_var,
+                    "instruction_ret_var(inst:P, v:V), instruction `inst` returns value of variable `v`",
+                    DOM(P), DOM(V)
+)
+HANDLE_PRODUCE_REL( instruction_ret_void,
+                    "instruction_ret_void(inst:P), instruction `inst` has no return value",
+                    DOM(P)
+)
+HANDLE_PRODUCE_REL( instruction_br,
+                    "",
+                    DOM(P)
+)
+HANDLE_PRODUCE_REL( instruction_br_cond,
+                    "instruction_br_cond(inst:P), instruction `inst` is a conditional branch",
+                    DOM(P)
+)
+HANDLE_PRODUCE_REL( instruction_br_cond_var,
+                    "",
+                    DOM(P), DOM(V)
+)
+HANDLE_PRODUCE_REL( instruction_br_cond_iftrue,
+                    "",
+                    DOM(P), DOM(B)
+)
+HANDLE_PRODUCE_REL( instruction_br_cond_iffalse,
+                    "",
+                    DOM(P), DOM(B)
+)
+HANDLE_PRODUCE_REL( instruction_br_uncond,
+                    "instruction_br_uncond(inst:P), instruction `inst` is an unconditional branch",
+                    DOM(P)
+)
+HANDLE_PRODUCE_REL( instruction_br_uncond_goto,
+                    "",
+                    DOM(P), DOM(B)
+)
+HANDLE_PRODUCE_REL( instruction_switch,
+                    "",
+                    DOM(P)
+)
+HANDLE_PRODUCE_REL( instruction_switch_var,
+                    "",
+                    DOM(P), DOM(V)
+)
+HANDLE_PRODUCE_REL( instruction_switch_default,
+                    "",
+                    DOM(P), DOM(B)
+)
+HANDLE_PRODUCE_REL( instruction_switch_ncases,
+                    "",
+                    DOM(P), DOM(Z)
+)
+HANDLE_PRODUCE_REL( instruction_switch_case_val,
+                    "",
+                    DOM(P), DOM(Z), DOM(C)
+)
+HANDLE_PRODUCE_REL( instruction_switch_case_goto,
+                    "",
+                    DOM(P), DOM(Z), DOM(B)
+)
+HANDLE_PRODUCE_REL( instruction_indirectbr,
+                    "",
+                    DOM(P)
+)
+HANDLE_PRODUCE_REL( instruction_indirectbr_addr,
+                    "",
+                    DOM(P), DOM(V)
+)
+HANDLE_PRODUCE_REL( instruction_indirectbr_nlabels,
+                    "",
+                    DOM(P), DOM(Z)
+)
+HANDLE_PRODUCE_REL( instruction_indirectbr_label,
+                    "",
+                    DOM(P), DOM(Z), DOM(B)
+)
+HANDLE_PRODUCE_REL( instruction_invk,
+                    "",
+                    DOM(P)
+)
+HANDLE_PRODUCE_REL( instruction_invk_void,
+                    "",
+                    DOM(P)
+)
+HANDLE_PRODUCE_REL( instruction_invk_res,
+                    "",
+                    DOM(P), DOM(V)
+)
+HANDLE_PRODUCE_REL( instruction_invk_static,
+                    "",
+                    DOM(P), DOM(M)
+)
+HANDLE_PRODUCE_REL( instruction_invk_dynamic,
+                    "",
+                    DOM(P), DOM(V)
+)
+HANDLE_PRODUCE_REL( instruction_invk_nargs,
+                    "",
+                    DOM(P), DOM(Z)
+)
+HANDLE_PRODUCE_REL( instruction_invk_arg,
+                    "",
+                    DOM(P), DOM(Z), DOM(V)
+)
+HANDLE_PRODUCE_REL( instruction_invk_normaldest,
+                    "",
+                    DOM(P), DOM(B)
+)
+HANDLE_PRODUCE_REL( instruction_invk_exceptiondest,
+                    "",
+                    DOM(P), DOM(B)
+)
+HANDLE_PRODUCE_REL( instruction_callbr,
+                    "",
+                    DOM(P)
+)
+HANDLE_PRODUCE_REL( instruction_callbr_void,
+                    "",
+                    DOM(P)
+)
+HANDLE_PRODUCE_REL( instruction_callbr_res,
+                    ""
+                    , DOM(P), DOM(V)
+)
+HANDLE_PRODUCE_REL( instruction_callbr_static,
+                    "",
+                    DOM(P), DOM(M)
+)
+HANDLE_PRODUCE_REL( instruction_callbr_dynamic,
+                    "",
+                    DOM(P), DOM(V)
+)
+HANDLE_PRODUCE_REL( instruction_callbr_nargs,
+                    "",
+                    DOM(P), DOM(Z)
+)
+HANDLE_PRODUCE_REL( instruction_callbr_arg,
+                    "",
+                    DOM(P), DOM(Z), DOM(V)
+)
+HANDLE_PRODUCE_REL( instruction_callbr_fallthrough,
+                    "",
+                    DOM(P), DOM(B)
+)
+HANDLE_PRODUCE_REL( instruction_callbr_indirect,
+                    "",
+                    DOM(P), DOM(B)
+)
+HANDLE_PRODUCE_REL( instruction_resume,
+                    "",
+                    DOM(P)
+)
+HANDLE_PRODUCE_REL( instruction_resume_var,
+                    "",
+                    DOM(P), DOM(V)
+)
+HANDLE_PRODUCE_REL( instruction_catchswitch,
+                    "",
+                    DOM(P)
+)
+HANDLE_PRODUCE_REL( instruction_catchswitch_res,
+                    "",
+                    DOM(P), DOM(V)
+)
+HANDLE_PRODUCE_REL( instruction_catchswitch_within,
+                    "",
+                    DOM(P), DOM(V)
+)
+HANDLE_PRODUCE_REL( instruction_catchswitch_handler,
+                    "",
+                    DOM(P), DOM(B)
+)
+HANDLE_PRODUCE_REL( instruction_catchswitch_unwindlabel,
+                    "",
+                    DOM(P), DOM(B)
+)
+HANDLE_PRODUCE_REL( instruction_catchswitch_unwindcaller,
+                    "",
+                    DOM(P)
+)
+HANDLE_PRODUCE_REL( instruction_catchret,
+                    "",
+                    DOM(P)
+)
+HANDLE_PRODUCE_REL( instruction_catchret_fromto,
+                    "",
+                    DOM(P), DOM(V), DOM(B)
+)
+HANDLE_PRODUCE_REL( instruction_cleanupret,
+                    "",
+                    DOM(P)
+)
+HANDLE_PRODUCE_REL( instruction_cleanupret_from,
+                    "",
+                    DOM(P), DOM(V)
+)
+HANDLE_PRODUCE_REL( instruction_cleanupret_unwindlabel,
+                    "",
+                    DOM(P), DOM(B)
+)
+HANDLE_PRODUCE_REL( instruction_cleanupret_unwindcaller,
+                    "",
+                    DOM(P)
+)
+HANDLE_PRODUCE_REL( instruction_unreachable,
+                    "",
+                    DOM(P)
+)
+//ProgramRel rel_instruction_unhandled;
+HANDLE_PRODUCE_REL( instruction_alloca,
+                    "",
+                    DOM(P)
+)
+HANDLE_PRODUCE_REL( instruction_alloca_res,
+                    "",
+                    DOM(P), DOM(V)
+)
+HANDLE_PRODUCE_REL( instruction_alloca_type,
+                    "",
+                    DOM(P), DOM(T)
+)
+HANDLE_PRODUCE_REL( instruction_alloca_size,
+                    "",
+                    DOM(P), DOM(V)
+)
+HANDLE_PRODUCE_REL( instruction_alloca_align,
+                    "",
+                    DOM(P), DOM(C)
+)
+//HANDLE_PRODUCE_REL( instruction_alloca_addrspace,
+//                    "",
+//                    DOM(P), DOM(AS)
+//)
+HANDLE_PRODUCE_REL( instruction_load,
+                    "",
+                    DOM(P)
+)
+HANDLE_PRODUCE_REL( instruction_load_volatile,
+                    "",
+                    DOM(P)
+)
+//HANDLE_PRODUCE_REL( instruction_load_ordering,
+//                    "",
+//                    DOM(P), DOM(ORD)
+//)
+HANDLE_PRODUCE_REL( instruction_load_res,
+                    "",
+                    DOM(P), DOM(V)
+)
+HANDLE_PRODUCE_REL( instruction_load_ptr,
+                    "",
+                    DOM(P), DOM(V)
+)
+HANDLE_PRODUCE_REL( instruction_load_align,
+                    "",
+                    DOM(P), DOM(C)
+)
+HANDLE_PRODUCE_REL( instruction_store,
+                    "",
+                    DOM(P)
+)
+HANDLE_PRODUCE_REL( instruction_store_volatile,
+                    "",
+                    DOM(P)
+)
+//HANDLE_PRODUCE_REL( instruction_store_ordering,
+//                    "",
+//                    DOM(P), DOM(ORD)
+//)
+HANDLE_PRODUCE_REL( instruction_store_var,
+                    "",
+                    DOM(P), DOM(V)
+)
+HANDLE_PRODUCE_REL( instruction_store_addr,
+                    "",
+                    DOM(P), DOM(V)
+)
+HANDLE_PRODUCE_REL( instruction_store_align,
+                    "",
+                    DOM(P), DOM(C)
+)
+HANDLE_PRODUCE_REL( instruction_fence,
+                    "",
+                    DOM(P)
+)
+//HANDLE_PRODUCE_REL( instruction_fence_ordering,
+//                    "",
+//                    DOM(P), DOM(ORD)
+//)
+HANDLE_PRODUCE_REL( instruction_cmpxchg,
+                    "",
+                    DOM(P)
+)
+HANDLE_PRODUCE_REL( instruction_cmpxchg_weak,
+                    "",
+                    DOM(P)
+)
+HANDLE_PRODUCE_REL( instruction_cmpxchg_strong,
+                    "",
+                    DOM(P)
+)
+HANDLE_PRODUCE_REL( instruction_cmpxchg_volatile,
+                    "",
+                    DOM(P)
+)
+//HANDLE_PRODUCE_REL( instruction_cmpxchg_succ_ordering,
+//                    "",
+//                    DOM(P), DOM(ORD)
+//)
+//HANDLE_PRODUCE_REL( instruction_cmpxchg_fail_ordering,
+//                    "",
+//                    DOM(P), DOM(ORD)
+//)
+HANDLE_PRODUCE_REL( instruction_cmpxchg_addr,
+                    "",
+                    DOM(P), DOM(V)
+)
+HANDLE_PRODUCE_REL( instruction_cmpxchg_cmp,
+                    "",
+                    DOM(P), DOM(V)
+)
+HANDLE_PRODUCE_REL( instruction_cmpxchg_new,
+                    "",
+                    DOM(P), DOM(V)
+)
+HANDLE_PRODUCE_REL( instruction_atomicrmw,
+                    "",
+                    DOM(P)
+)
+HANDLE_PRODUCE_REL( instruction_atomicrmw_volatile,
+                    "",
+                    DOM(P)
+)
+//HANDLE_PRODUCE_REL( instruction_atomicrmw_ordering,
+//                    "",
+//                    DOM(P), DOM(ORD)
+//)
+HANDLE_PRODUCE_REL( instruction_atomicrmw_xchg,
+                    "",
+                    DOM(P), DOM(V), DOM(V)
+)
+HANDLE_PRODUCE_REL( instruction_atomicrmw_add,
+                    ""
+                    , DOM(P), DOM(V), DOM(V)
+)
+HANDLE_PRODUCE_REL( instruction_atomicrmw_sub,
+                    "",
+                    DOM(P), DOM(V), DOM(V)
+)
+HANDLE_PRODUCE_REL( instruction_atomicrmw_and,
+                    "",
+                    DOM(P), DOM(V), DOM(V)
+)
+HANDLE_PRODUCE_REL( instruction_atomicrmw_nand,
+                    "",
+                    DOM(P), DOM(V), DOM(V)
+)
+HANDLE_PRODUCE_REL( instruction_atomicrmw_or,
+                    "",
+                    DOM(P), DOM(V), DOM(V)
+)
+HANDLE_PRODUCE_REL( instruction_atomicrmw_xor,
+                    "",
+                    DOM(P), DOM(V), DOM(V)
+)
+HANDLE_PRODUCE_REL( instruction_atomicrmw_max,
+                    "",
+                    DOM(P), DOM(V), DOM(V)
+)
+HANDLE_PRODUCE_REL( instruction_atomicrmw_min,
+                    "",
+                    DOM(P), DOM(V), DOM(V)
+)
+HANDLE_PRODUCE_REL( instruction_atomicrmw_umax,
+                    "",
+                    DOM(P), DOM(V), DOM(V)
+)
+HANDLE_PRODUCE_REL( instruction_atomicrmw_umin,
+                    "",
+                    DOM(P), DOM(V), DOM(V)
+)
+HANDLE_PRODUCE_REL( instruction_atomicrmw_fadd,
+                    "",
+                    DOM(P), DOM(V), DOM(V)
+)
+HANDLE_PRODUCE_REL( instruction_atomicrmw_fsub,
+                    "",
+                    DOM(P), DOM(V), DOM(V)
+)
+HANDLE_PRODUCE_REL( instruction_atomicrmw_fmax,
+                    "",
+                    DOM(P), DOM(V), DOM(V)
+)
+HANDLE_PRODUCE_REL( instruction_atomicrmw_fmin,
+                    "",
+                    DOM(P), DOM(V), DOM(V)
+)
+HANDLE_PRODUCE_REL( instruction_atomicrmw_bad,
+                    "",
+                    DOM(P), DOM(V), DOM(V)
+)
+HANDLE_PRODUCE_REL( instruction_phi,
+                    "",
+                    DOM(P)
+)
+HANDLE_PRODUCE_REL( instruction_phi_res,
+                    "",
+                    DOM(P), DOM(V)
+)
+HANDLE_PRODUCE_REL( instruction_phi_npairs,
+                    "",
+                    DOM(P), DOM(Z)
+)
+HANDLE_PRODUCE_REL( instruction_phi_pair,
+                    "",
+                    DOM(P), DOM(Z), DOM(V), DOM(B)
+)
+HANDLE_PRODUCE_REL( instruction_select,
+                    "",
+                    DOM(P)
+)
+HANDLE_PRODUCE_REL( instruction_select_expr,
+                    "",
+                    DOM(P), DOM(V), DOM(V), DOM(V), DOM(V)
+)
+HANDLE_PRODUCE_REL( instruction_freeze,
+                    "",
+                    DOM(P)
+)
+HANDLE_PRODUCE_REL( instruction_freeze_var,
+                    "",
+                    DOM(P), DOM(V)
+)
+HANDLE_PRODUCE_REL( instruction_call,
+                    "",
+                    DOM(P)
+)
+HANDLE_PRODUCE_REL( instruction_call_void,
+                    "",
+                    DOM(P)
+)
+HANDLE_PRODUCE_REL( instruction_call_res,
+                    "",
+                    DOM(P), DOM(V)
+)
+HANDLE_PRODUCE_REL( instruction_call_static,
+                    "",
+                    DOM(P), DOM(M)
+)
+HANDLE_PRODUCE_REL( instruction_call_dynamic,
+                    "",
+                    DOM(P), DOM(V)
+)
+HANDLE_PRODUCE_REL( instruction_call_nargs,
+                    "",
+                    DOM(P), DOM(Z)
+)
+HANDLE_PRODUCE_REL( instruction_call_arg,
+                    "",
+                    DOM(P), DOM(Z), DOM(V)
+)
+HANDLE_PRODUCE_REL( instruction_vaarg,
+                    "",
+                    DOM(P)
+)
+HANDLE_PRODUCE_REL( instruction_vaarg_expr,
+                    "",
+                    DOM(P), DOM(V), DOM(V)
+)
+HANDLE_PRODUCE_REL( instruction_landingpad,
+                    "",
+                    DOM(P)
+)
+HANDLE_PRODUCE_REL( instruction_landingpad_res,
+                    "",
+                    DOM(P), DOM(V)
+)
+HANDLE_PRODUCE_REL( instruction_landingpad_cleanup,
+                    "",
+                    DOM(P)
+)
+HANDLE_PRODUCE_REL( instruction_landingpad_nocleanup,
+                    "",
+                    DOM(P)
+)
+HANDLE_PRODUCE_REL( instruction_landingpad_nclses,
+                    "",
+                    DOM(P), DOM(Z)
+)
+HANDLE_PRODUCE_REL( instruction_landingpad_cls_catch,
+                    "",
+                    DOM(P), DOM(Z), DOM(V)
+)
+HANDLE_PRODUCE_REL( instruction_landingpad_cls_filter,
+                    "",
+                    DOM(P), DOM(Z), DOM(V)
+)
+HANDLE_PRODUCE_REL( instruction_catchpad,
+                    "",
+                    DOM(P)
+)
+HANDLE_PRODUCE_REL( instruction_catchpad_res,
+                    "",
+                    DOM(P), DOM(V)
+)
+HANDLE_PRODUCE_REL( instruction_catchpad_within,
+                    "",
+                    DOM(P), DOM(V)
+)
+HANDLE_PRODUCE_REL( instruction_catchpad_nargs,
+                    "",
+                    DOM(P), DOM(Z)
+)
+HANDLE_PRODUCE_REL( instruction_catchpad_arg,
+                    "",
+                    DOM(P), DOM(Z), DOM(V)
+)
+HANDLE_PRODUCE_REL( instruction_cleanuppad,
+                    "",
+                    DOM(P)
+)
+HANDLE_PRODUCE_REL( instruction_cleanuppad_res,
+                    "",
+                    DOM(P), DOM(V)
+)
+HANDLE_PRODUCE_REL( instruction_cleanuppad_within,
+                    "",
+                    DOM(P), DOM(B)
+)
+HANDLE_PRODUCE_REL( instruction_cleanuppad_nargs,
+                    "",
+                    DOM(P), DOM(Z)
+)
+HANDLE_PRODUCE_REL( instruction_cleanuppad_arg,
+                    "",
+                    DOM(P), DOM(Z), DOM(V)
+)
+HANDLE_PRODUCE_REL( instruction_op,
+                    "",
+                    DOM(P)
+)
+HANDLE_PRODUCE_REL( instruction_op_res,
+                    "",
+                    DOM(P), DOM(V)
+)
+#undef HANDLE_PRODUCE_DOM
+#undef HANDLE_PRODUCE_REL
+#undef DOM

@@ -9,6 +9,21 @@ using namespace tea;
 using namespace std;
 using namespace llvm;
 
+const std::map<std::string, std::string> IRManager::consumed_doms_info = {};
+const std::map<std::string, std::pair<std::vector<std::string>, std::string>> IRManager::consumed_rels_info = {};
+
+const std::map<std::string, std::string> IRManager::produced_doms_info = {
+#define HANDLE_PRODUCE_DOM(name, desc) { #name, desc },
+#include "irmanager_trgts.def"
+};
+
+const std::map<std::string, std::pair<std::vector<std::string>, std::string>> IRManager::produced_rels_info = {
+#define DOM(name) #name
+#define HANDLE_PRODUCE_REL(name, desc, ...) { #name, {{ __VA_ARGS__ }, desc }},
+#include "irmanager_trgts.def"
+};
+
+
 IRManager::IRManager(const string& name, std::unique_ptr<llvm::Module> mod) {
     this->name = name;
     this->module = std::move(mod);
@@ -328,9 +343,9 @@ void IRManager::build_type_rels() {
                     Type * pElemTy = pPtrTy->getPointerElementType();
                     rel_pointer_type_component.add({ty_str, rev_type_map[pElemTy]});
                 }
-                // pointer_type_addr_space(ty:T, addr:AS)
-                unsigned addr_space = pPtrTy->getAddressSpace();
-                rel_pointer_type_addrspace.add({ty_str, to_string(addr_space)});
+//                // pointer_type_addr_space(ty:T, addr:AS)
+//                unsigned addr_space = pPtrTy->getAddressSpace();
+//                rel_pointer_type_addrspace.add({ty_str, to_string(addr_space)});
                 break;
             }
             case Type::FixedVectorTyID:
@@ -374,10 +389,10 @@ void IRManager::build_type_rels() {
 
                 auto *pStructTy = cast<StructType>(pTy);
 
-                // struct_type_name(ty:T, name:AS) // TODO: learn more about struct namings
-                if (pStructTy->hasName()) {
-                    rel_struct_type_name.add({ty_str, pStructTy->getName().str()});
-                }
+//                // struct_type_name(ty:T, name:??) // TODO: learn more about struct namings
+//                if (pStructTy->hasName()) {
+//                    rel_struct_type_name.add({ty_str, pStructTy->getName().str()});
+//                }
                 // opaque_struct_type(ty:T) // TODO: learn more about opaque structs
                 if (pStructTy->isOpaque()) {
                     rel_opaque_struct_type.add({ty_str});
@@ -485,9 +500,9 @@ void IRManager::build_value_rels() {
             // variable_global_type(v:V, ty:T)
             Type * pValueTy = pGlobal->getValueType();
             rel_variable_global_type.add({val_n, rev_type_map[pValueTy]});
-            // variable_global_linkage(v:V)
-            GlobalValue::LinkageTypes link = pGlobal->getLinkage();
-            rel_variable_global_linkage.add({val_n, get_linkage_string(link)});
+//            // variable_global_linkage(v:V)
+//            GlobalValue::LinkageTypes link = pGlobal->getLinkage();
+//            rel_variable_global_linkage.add({val_n, get_linkage_string(link)});
             // variable_global_align(v:V,align:C)
             MaybeAlign align = pGlobal->getAlign();
             rel_variable_global_align.add({val_n, to_string(align.valueOrOne().value())});
@@ -886,7 +901,7 @@ void IRManager::build_controlflow_rels() {
             if(idx + 1 < bb_inst_cnt){
                 string next_id = bb_n + "-" + to_string(idx + 1);
                 // instruction_next(inst_pred:I, inst_post:I)
-                rel_instruction_basicblock.add({inst_id, next_id});
+                rel_instruction_next.add({inst_id, next_id});
             }
         }
     }
@@ -905,12 +920,12 @@ void IRManager::build_function_rels() {
         FunctionType* pFnTy = pFunc->getFunctionType();
         rel_function_type.add({f_str, rev_type_map[pFnTy]});
 
-        // function_name(fn:M, name:V)
-        rel_function_name.add({f_str, pFunc->getName().str()});
+//        // function_name(fn:M, name:??)
+//        rel_function_name.add({f_str, pFunc->getName().str()});
 
-        // function_linkage(fn:M, link:L)
-        GlobalValue::LinkageTypes link = pFunc->getLinkage();
-        rel_function_linkage.add({f_str, get_linkage_string(link)});
+//        // function_linkage(fn:M, link:L)
+//        GlobalValue::LinkageTypes link = pFunc->getLinkage();
+//        rel_function_linkage.add({f_str, get_linkage_string(link)});
 
         // function_nparams(fn:M, n:Z)
         size_t num_params = pFunc->arg_size();
@@ -992,7 +1007,7 @@ void IRManager::build_instruction_rels() {
                 rel_instruction_br_cond.add({inst_str});
                 // instruction_br_cond_val(br_inst:P, v:V)
                 Value * pCond = pBr->getCondition();
-                rel_instruction_br_cond_val.add({inst_str, rev_value_map[pCond]});
+                rel_instruction_br_cond_var.add({inst_str, rev_value_map[pCond]});
                 // instruction_br_cond_iftrue(br_inst:P, l:BB)
                 BasicBlock * pTrue = pBr->getSuccessor(0);
                 rel_instruction_br_cond_iftrue.add({inst_str, rev_bb_map[pTrue]});
@@ -1217,20 +1232,20 @@ void IRManager::build_instruction_rels() {
             // instruction_alloca_align(inst:P, align:C)
             Align align = pAlloca->getAlign();
             rel_instruction_alloca_align.add({inst_str, to_string(align.value())});
-            // instruction_alloca_addr_space(inst:P, addr:AS)
-            unsigned addrspace = pAlloca->getAddressSpace();
-            rel_instruction_alloca_addrspace.add({inst_str, to_string(addrspace)});
+//            // instruction_alloca_addr_space(inst:P, addr:AS)
+//            unsigned addrspace = pAlloca->getAddressSpace();
+//            rel_instruction_alloca_addrspace.add({inst_str, to_string(addrspace)});
         } else if(auto * pLoad = dyn_cast<llvm::LoadInst>(pInst)){
             // instruction_load(inst:P)
             rel_instruction_load.add({inst_str});
             // instruction_load_volatile(inst:P)
             if (pLoad->isVolatile())
                 rel_instruction_load_volatile.add({inst_str});
-            // instruction_load_ordering(inst:P, ord:ORD)
-            if (pLoad->isAtomic()) {
-                AtomicOrdering order = pLoad->getOrdering();
-                rel_instruction_load_ordering.add({inst_str, get_ordering_kind(order)});
-            }
+//            // instruction_load_ordering(inst:P, ord:ORD)
+//            if (pLoad->isAtomic()) {
+//                AtomicOrdering order = pLoad->getOrdering();
+//                rel_instruction_load_ordering.add({inst_str, get_ordering_kind(order)});
+//            }
             // instruction_load_res(inst:P, res:V)
             Value * pRes = pLoad;
             rel_instruction_load_res.add({inst_str, rev_value_map[pRes]});
@@ -1247,11 +1262,11 @@ void IRManager::build_instruction_rels() {
             // instruction_store_volatile(inst:P)
             if (pStore->isVolatile())
                 rel_instruction_store_volatile.add({inst_str});
-            // instruction_store_ordering(inst:P, ord:ORD)
-            if (pStore->isAtomic()) {
-                AtomicOrdering order = pStore->getOrdering();
-                rel_instruction_store_ordering.add({inst_str, get_ordering_kind(order)});
-            }
+//            // instruction_store_ordering(inst:P, ord:ORD)
+//            if (pStore->isAtomic()) {
+//                AtomicOrdering order = pStore->getOrdering();
+//                rel_instruction_store_ordering.add({inst_str, get_ordering_kind(order)});
+//            }
             // instruction_store_var(inst:P, v:V)
             Value * pValue = pStore->getValueOperand();
             rel_instruction_store_var.add({inst_str, rev_value_map[pValue]});
@@ -1265,9 +1280,9 @@ void IRManager::build_instruction_rels() {
         } else if(auto * pFence = dyn_cast<llvm::FenceInst>(pInst)){
             // instruction_fence(inst:P)
             rel_instruction_fence.add({inst_str});
-            // instruction_fence_ordering(inst:P, ord:ORD)
-            AtomicOrdering order = pFence->getOrdering();
-            rel_instruction_fence_ordering.add({inst_str, get_ordering_kind(order)});
+//            // instruction_fence_ordering(inst:P, ord:ORD)
+//            AtomicOrdering order = pFence->getOrdering();
+//            rel_instruction_fence_ordering.add({inst_str, get_ordering_kind(order)});
         }
         else if(auto * pCmpxchg = dyn_cast<llvm::AtomicCmpXchgInst>(pInst)){
             // instruction_cmpxchg(inst:P)
@@ -1281,12 +1296,12 @@ void IRManager::build_instruction_rels() {
             // instruction_cmpxchg_volatile(inst:P)
             if (pCmpxchg->isVolatile())
                 rel_instruction_cmpxchg_volatile.add({inst_str});
-            // instruction_cmpxchg_succ_ordering(inst:P, ord:ORD)
-            AtomicOrdering succ_ord = pCmpxchg->getSuccessOrdering();
-            rel_instruction_cmpxchg_succ_ordering.add({inst_str, get_ordering_kind(succ_ord)});
-            // instruction_cmpxchg_fail_ordering(inst:P, ord:ORD)
-            AtomicOrdering fail_ord = pCmpxchg->getFailureOrdering();
-            rel_instruction_cmpxchg_fail_ordering.add({inst_str, get_ordering_kind(fail_ord)});
+//            // instruction_cmpxchg_succ_ordering(inst:P, ord:ORD)
+//            AtomicOrdering succ_ord = pCmpxchg->getSuccessOrdering();
+//            rel_instruction_cmpxchg_succ_ordering.add({inst_str, get_ordering_kind(succ_ord)});
+//            // instruction_cmpxchg_fail_ordering(inst:P, ord:ORD)
+//            AtomicOrdering fail_ord = pCmpxchg->getFailureOrdering();
+//            rel_instruction_cmpxchg_fail_ordering.add({inst_str, get_ordering_kind(fail_ord)});
             // instruction_cmpxchg_addr(inst:P, ptr:V)
             Value * pAddr = pCmpxchg->getPointerOperand();
             rel_instruction_cmpxchg_addr.add({inst_str, rev_value_map[pAddr]});
@@ -1302,9 +1317,9 @@ void IRManager::build_instruction_rels() {
             // instruction_atomicrmw_volatile(inst:P)
             if (pAtomicrmw->isVolatile())
                 rel_instruction_atomicrmw_volatile.add({inst_str});
-            // instruction_atomicrmw_ordering(inst:P, ord:ORD)
-            AtomicOrdering ord = pAtomicrmw->getOrdering();
-            rel_instruction_atomicrmw_ordering.add({inst_str, get_ordering_kind(ord)});
+//            // instruction_atomicrmw_ordering(inst:P, ord:ORD)
+//            AtomicOrdering ord = pAtomicrmw->getOrdering();
+//            rel_instruction_atomicrmw_ordering.add({inst_str, get_ordering_kind(ord)});
             // instruction_atomicrmw_<bop>(inst:P, addr:V, val:V)
             Value * pAddr = pAtomicrmw->getPointerOperand();
             Value * pVal = pAtomicrmw->getPointerOperand();
@@ -1517,132 +1532,132 @@ void IRManager::build_instruction_rels() {
 }
 
 
-string IRManager::get_conv_kind(llvm::CallingConv::ID id){
-    return "";
-}
-
-
-string IRManager::get_ordering_kind(llvm::AtomicOrdering ao){
-    std::string ordering_kind = "";
-    switch(ao){
-        case llvm::AtomicOrdering::Acquire:
-        ordering_kind = "Acquire";
-        break;
-        case llvm::AtomicOrdering::AcquireRelease:
-        ordering_kind = "AcquireRelease";
-        break;
-        /*
-        //last kind has the same value with sequentiallyconsistent
-        case llvm::AtomicOrdering::LAST:
-        ordering_kind = "LAST";
-        break;
-        */
-        case llvm::AtomicOrdering::Monotonic:
-        ordering_kind = "Monotonic";
-        break;
-        case llvm::AtomicOrdering::NotAtomic:
-        ordering_kind = "NotAtomic";
-        break;
-        case llvm::AtomicOrdering::Release:
-        ordering_kind = "Release";
-        break;
-        case llvm::AtomicOrdering::SequentiallyConsistent:
-        ordering_kind = "SequentiallyConsistent";
-        break;
-        case llvm::AtomicOrdering::Unordered:
-        ordering_kind = "Unordered";
-        break;
-        default:
-        printf("something is error\n");
-    }
-    return ordering_kind;
-}
-
-
-string IRManager::get_visibility_string(llvm::GlobalValue::VisibilityTypes gv_ty){
-    string ty_string="";
-    switch(gv_ty){
-        case llvm::GlobalValue::VisibilityTypes::DefaultVisibility:
-        ty_string = "DefaultVisibility";
-        break;
-        case llvm::GlobalValue::VisibilityTypes::HiddenVisibility:
-        ty_string = "HiddenVisibility";
-        break;
-        case llvm::GlobalValue::VisibilityTypes::ProtectedVisibility:
-        ty_string = "ProtectedVisibility";
-        break;
-        default:
-        break;
-    }
-    return ty_string;
-}
-
-
-string IRManager::get_linkage_string(llvm::GlobalValue::LinkageTypes gv_ty){
-    string ty_string="";
-    switch(gv_ty){
-        case llvm::GlobalValue::LinkageTypes::AppendingLinkage:
-        ty_string = "AppendingLinkage";
-        break;
-        case llvm::GlobalValue::LinkageTypes::AvailableExternallyLinkage:
-        ty_string = "AvailableExternallyLinkage";
-        break;
-        case llvm::GlobalValue::LinkageTypes::CommonLinkage:
-        ty_string = "CommonLinkage";
-        break;
-        case llvm::GlobalValue::LinkageTypes::ExternalLinkage:
-        ty_string = "ExternalLinkage";
-        break;
-        case llvm::GlobalValue::LinkageTypes::ExternalWeakLinkage:
-        ty_string = "ExternalWeakLinkage";
-        break;
-        case llvm::GlobalValue::LinkageTypes::InternalLinkage:
-        ty_string = "InternalLinkage";
-        break;
-        case llvm::GlobalValue::LinkageTypes::LinkOnceAnyLinkage:
-        ty_string = "LinkOnceAnyLinkage";
-        break;
-        case llvm::GlobalValue::LinkageTypes::LinkOnceODRLinkage:
-        ty_string = "LinkOnceODRLinkage";
-        break;
-        case llvm::GlobalValue::LinkageTypes::PrivateLinkage:
-        ty_string = "PrivateLinkage";
-        break;
-        case llvm::GlobalValue::LinkageTypes::WeakAnyLinkage:
-        ty_string = "WeakAnyLinkage";
-        break;
-        case llvm::GlobalValue::LinkageTypes::WeakODRLinkage:
-        ty_string = "WeakODRLinkage";
-        break;
-        default:
-        break;
-    }
-    return ty_string;
-
-}
-
-
-string IRManager::get_mode_string(llvm::GlobalValue::ThreadLocalMode gv_ty){
-    string ty_string="";
-    switch(gv_ty){
-        case llvm::GlobalValue::ThreadLocalMode::GeneralDynamicTLSModel:
-        ty_string = "GeneralDynamicTLSModel";
-        break;
-        case llvm::GlobalValue::ThreadLocalMode::InitialExecTLSModel:
-        ty_string = "InitialExecTLSModel";
-        break;
-        case llvm::GlobalValue::ThreadLocalMode::LocalDynamicTLSModel:
-        ty_string = "LocalDynamicTLSModel";
-        break;
-        case llvm::GlobalValue::ThreadLocalMode::LocalExecTLSModel:
-        ty_string = "LocalExecTLSModel";
-        break;
-        case llvm::GlobalValue::ThreadLocalMode::NotThreadLocal:
-        ty_string = "NotThreadLocal";
-        break;
-        default:
-        break;
-    }
-    return ty_string;
-}
+//string IRManager::get_conv_kind(llvm::CallingConv::ID id){
+//    return "";
+//}
+//
+//
+//string IRManager::get_ordering_kind(llvm::AtomicOrdering ao){
+//    std::string ordering_kind = "";
+//    switch(ao){
+//        case llvm::AtomicOrdering::Acquire:
+//        ordering_kind = "Acquire";
+//        break;
+//        case llvm::AtomicOrdering::AcquireRelease:
+//        ordering_kind = "AcquireRelease";
+//        break;
+//        /*
+//        //last kind has the same value with sequentiallyconsistent
+//        case llvm::AtomicOrdering::LAST:
+//        ordering_kind = "LAST";
+//        break;
+//        */
+//        case llvm::AtomicOrdering::Monotonic:
+//        ordering_kind = "Monotonic";
+//        break;
+//        case llvm::AtomicOrdering::NotAtomic:
+//        ordering_kind = "NotAtomic";
+//        break;
+//        case llvm::AtomicOrdering::Release:
+//        ordering_kind = "Release";
+//        break;
+//        case llvm::AtomicOrdering::SequentiallyConsistent:
+//        ordering_kind = "SequentiallyConsistent";
+//        break;
+//        case llvm::AtomicOrdering::Unordered:
+//        ordering_kind = "Unordered";
+//        break;
+//        default:
+//        printf("something is error\n");
+//    }
+//    return ordering_kind;
+//}
+//
+//
+//string IRManager::get_visibility_string(llvm::GlobalValue::VisibilityTypes gv_ty){
+//    string ty_string="";
+//    switch(gv_ty){
+//        case llvm::GlobalValue::VisibilityTypes::DefaultVisibility:
+//        ty_string = "DefaultVisibility";
+//        break;
+//        case llvm::GlobalValue::VisibilityTypes::HiddenVisibility:
+//        ty_string = "HiddenVisibility";
+//        break;
+//        case llvm::GlobalValue::VisibilityTypes::ProtectedVisibility:
+//        ty_string = "ProtectedVisibility";
+//        break;
+//        default:
+//        break;
+//    }
+//    return ty_string;
+//}
+//
+//
+//string IRManager::get_linkage_string(llvm::GlobalValue::LinkageTypes gv_ty){
+//    string ty_string="";
+//    switch(gv_ty){
+//        case llvm::GlobalValue::LinkageTypes::AppendingLinkage:
+//        ty_string = "AppendingLinkage";
+//        break;
+//        case llvm::GlobalValue::LinkageTypes::AvailableExternallyLinkage:
+//        ty_string = "AvailableExternallyLinkage";
+//        break;
+//        case llvm::GlobalValue::LinkageTypes::CommonLinkage:
+//        ty_string = "CommonLinkage";
+//        break;
+//        case llvm::GlobalValue::LinkageTypes::ExternalLinkage:
+//        ty_string = "ExternalLinkage";
+//        break;
+//        case llvm::GlobalValue::LinkageTypes::ExternalWeakLinkage:
+//        ty_string = "ExternalWeakLinkage";
+//        break;
+//        case llvm::GlobalValue::LinkageTypes::InternalLinkage:
+//        ty_string = "InternalLinkage";
+//        break;
+//        case llvm::GlobalValue::LinkageTypes::LinkOnceAnyLinkage:
+//        ty_string = "LinkOnceAnyLinkage";
+//        break;
+//        case llvm::GlobalValue::LinkageTypes::LinkOnceODRLinkage:
+//        ty_string = "LinkOnceODRLinkage";
+//        break;
+//        case llvm::GlobalValue::LinkageTypes::PrivateLinkage:
+//        ty_string = "PrivateLinkage";
+//        break;
+//        case llvm::GlobalValue::LinkageTypes::WeakAnyLinkage:
+//        ty_string = "WeakAnyLinkage";
+//        break;
+//        case llvm::GlobalValue::LinkageTypes::WeakODRLinkage:
+//        ty_string = "WeakODRLinkage";
+//        break;
+//        default:
+//        break;
+//    }
+//    return ty_string;
+//
+//}
+//
+//
+//string IRManager::get_mode_string(llvm::GlobalValue::ThreadLocalMode gv_ty){
+//    string ty_string="";
+//    switch(gv_ty){
+//        case llvm::GlobalValue::ThreadLocalMode::GeneralDynamicTLSModel:
+//        ty_string = "GeneralDynamicTLSModel";
+//        break;
+//        case llvm::GlobalValue::ThreadLocalMode::InitialExecTLSModel:
+//        ty_string = "InitialExecTLSModel";
+//        break;
+//        case llvm::GlobalValue::ThreadLocalMode::LocalDynamicTLSModel:
+//        ty_string = "LocalDynamicTLSModel";
+//        break;
+//        case llvm::GlobalValue::ThreadLocalMode::LocalExecTLSModel:
+//        ty_string = "LocalExecTLSModel";
+//        break;
+//        case llvm::GlobalValue::ThreadLocalMode::NotThreadLocal:
+//        ty_string = "NotThreadLocal";
+//        break;
+//        default:
+//        break;
+//    }
+//    return ty_string;
+//}
 

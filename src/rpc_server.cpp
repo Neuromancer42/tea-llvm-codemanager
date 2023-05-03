@@ -36,7 +36,9 @@ public:
                 const string& proj_id = request->project_id();
                 map_ctx.try_emplace(proj_id, make_unique<llvm::LLVMContext>());
                 string src_name = request->option().property().at("tea.source");
-                map_manager[proj_id] = unique_ptr<IRManager>(IRManager::createFromFile(src_name, map_diag[proj_id], *map_ctx[proj_id]));
+
+                // TODO set workdir of provider
+                map_manager[proj_id] = unique_ptr<IRManager>(IRManager::createFromFile(src_name, map_diag[proj_id], *map_ctx[proj_id], proj_id));
                 // TODO: run analysis
                 response->set_msg("SUCCESS");
             }

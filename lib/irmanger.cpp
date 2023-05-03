@@ -9,24 +9,30 @@ using namespace tea;
 using namespace std;
 using namespace llvm;
 
-const std::map<std::string, std::string> IRManager::consumed_doms_info = {};
-const std::map<std::string, std::pair<std::vector<std::string>, std::string>> IRManager::consumed_rels_info = {};
+const map<string, string> IRManager::consumed_doms_info = {};
+const map<std::string, pair<vector<string>, string>> IRManager::consumed_rels_info = {};
 
-const std::map<std::string, std::string> IRManager::produced_doms_info = {
+const map<string, string> IRManager::produced_doms_info = {
 #define HANDLE_PRODUCE_DOM(name, desc) { #name, desc },
 #include "irmanager_trgts.def"
 };
 
-const std::map<std::string, std::pair<std::vector<std::string>, std::string>> IRManager::produced_rels_info = {
+const map<std::string, pair<vector<string>, string>> IRManager::produced_rels_info = {
 #define DOM(name) #name
 #define HANDLE_PRODUCE_REL(name, desc, ...) { #name, {{ __VA_ARGS__ }, desc }},
 #include "irmanager_trgts.def"
 };
 
+void IRManager::save_all() {
+#define HANDLE_PRODUCE_DOM(name, desc) { std::string loc = dom_ ##name .save(workpath); dom_loc_map.emplace(#name, loc); }
+#define HANDLE_PRODUCE_REL(name, desc, ...) { std::string loc = rel_ ##name .save(workpath); rel_loc_map.emplace(#name, loc); }
+#include "irmanager_trgts.def"
+}
 
-IRManager::IRManager(const string& name, std::unique_ptr<llvm::Module> mod) {
+IRManager::IRManager(const string& name, std::unique_ptr<llvm::Module> mod, const std::string & workdir) {
     this->name = name;
     this->module = std::move(mod);
+    this->workpath = workdir;
 }
 
 void IRManager::collect_element_maps() {

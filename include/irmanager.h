@@ -21,16 +21,16 @@
 namespace tea {
     class IRManager {
     public:
-        static IRManager* createFromFile(const std::string& filename, llvm::SMDiagnostic & diag, llvm::LLVMContext & ctx) {
+        static IRManager* createFromFile(const std::string& filename, llvm::SMDiagnostic & diag, llvm::LLVMContext & ctx, const std::string & workdir) {
             auto mod = llvm::parseIRFile(filename, diag, ctx);
             if (mod == nullptr) {
                 std::cerr << "IRManager: failed to read from " << filename << ":" << std::endl
                     << diag.getMessage().str() << std::endl;
                 return nullptr;
             }
-            return new IRManager(filename, std::move(mod));
+            return new IRManager(filename, std::move(mod), workdir);
         }
-        IRManager(const std::string& name, std::unique_ptr<llvm::Module> mod);
+        IRManager(const std::string& name, std::unique_ptr<llvm::Module> mod, const std::string & workdir);
         std::string get_name();
         // TODO: get analysis infos
         inline void build_doms() {
@@ -68,9 +68,22 @@ namespace tea {
             build_instruction_rels();
         }
 
+        void save_all();
+
+        [[nodiscard]] inline const std::string & get_dom_loc(const std::string & dom_name) {
+            return dom_loc_map[dom_name];
+        }
+
+        [[nodiscard]] inline const std::string & get_rel_loc(const std::string & rel_name) {
+            return rel_loc_map[rel_name];
+        }
     private:
         std::string name;
         std::unique_ptr<llvm::Module> module;
+        std::filesystem::path workpath;
+
+        std::map<std::string, std::string> dom_loc_map;
+        std::map<std::string, std::string> rel_loc_map;
 
         void collect_element_maps();
         void collect_type(llvm::Type *);
@@ -125,7 +138,6 @@ namespace tea {
         static const std::map<std::string, std::pair<std::vector<std::string>, std::string>> consumed_rels_info;
         static const std::map<std::string, std::string> produced_doms_info;
         static const std::map<std::string, std::pair<std::vector<std::string>, std::string>> produced_rels_info;
-
     };
 }
 #endif //TEA_LLVM_CODEMANAGER_IRMANAGER_H

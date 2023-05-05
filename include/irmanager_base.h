@@ -3,8 +3,8 @@
 //
 // Contributors: Yifan Chen, Tianyu Zhang
 
-#ifndef TEA_LLVM_CODEMANAGER_IRMANAGER_H
-#define TEA_LLVM_CODEMANAGER_IRMANAGER_H
+#ifndef TEA_LLVM_CODEMANAGER_IRMANAGER_BASE_H
+#define TEA_LLVM_CODEMANAGER_IRMANAGER_BASE_H
 
 #include "trgt.h"
 
@@ -17,8 +17,10 @@
 #include <set>
 #include <string>
 #include <iostream>
+#include <utility>
 
 namespace tea {
+    typedef std::pair<std::vector<std::string>, std::string> RelInfo;
     class IRManager {
     public:
         static IRManager* createFromFile(const std::string& filename, llvm::SMDiagnostic & diag, llvm::LLVMContext & ctx, const std::string & workdir) {
@@ -30,9 +32,15 @@ namespace tea {
             }
             return new IRManager(filename, std::move(mod), workdir);
         }
-        IRManager(const std::string& name, std::unique_ptr<llvm::Module> mod, const std::string & workdir);
+
+        IRManager(std::string name, std::unique_ptr<llvm::Module> mod, const std::string & workdir)
+            : name(std::move(name)), module(std::move(mod)), workpath(workdir)
+            {}
+
+        ~IRManager() = default;
+
         std::string get_name();
-        // TODO: get analysis infos
+
         inline void build_doms() {
             collect_element_maps();
             for (auto & rev_bb_pair : rev_bb_map)
@@ -60,6 +68,7 @@ namespace tea {
 //            ProgramDom dom_ORD{"ORD", "atomic orderings"};
 //            ProgramDom dom_AS {"AS", "address space"};
         }
+
         inline void build_rels() {
             build_type_rels();
             build_value_rels();
@@ -77,14 +86,14 @@ namespace tea {
         [[nodiscard]] inline const std::string & get_rel_loc(const std::string & rel_name) {
             return rel_loc_map[rel_name];
         }
-    private:
+
+    protected:
         std::string name;
         std::unique_ptr<llvm::Module> module;
         std::filesystem::path workpath;
 
-        std::map<std::string, std::string> dom_loc_map;
-        std::map<std::string, std::string> rel_loc_map;
-
+    private:
+        /* helper functions for run analysis and generate doms and rels*/
         void collect_element_maps();
         void collect_type(llvm::Type *);
         void collect_value(llvm::Value * pVal);
@@ -101,6 +110,13 @@ namespace tea {
         void add_op_icmp(unsigned pred, llvm::Value * pRes, llvm::Value * pLeft, llvm::Value * pRight);
         void add_op_fcmp(unsigned pred, llvm::Value * pRes, llvm::Value * pLeft, llvm::Value * pRight);
 
+//        static std::string get_ordering_kind(llvm::AtomicOrdering ao);
+//        static std::string get_conv_kind(llvm::CallingConv::ID id);
+//        static std::string get_visibility_string(llvm::GlobalValue::VisibilityTypes gv_ty);
+//        static std::string get_linkage_string(llvm::GlobalValue::LinkageTypes gv_ty);
+//        static std::string get_mode_string(llvm::GlobalValue::ThreadLocalMode gv_ty);
+
+    public:
         unsigned max_z = 0;
         std::map<std::string,llvm::Type*> type_map;
         std::map<llvm::Type*, std::string> rev_type_map;
@@ -120,11 +136,8 @@ namespace tea {
         std::map<std::string,llvm::Function*> func_map;
         std::map<llvm::Function*, std::string> rev_func_map;
 
-//        static std::string get_ordering_kind(llvm::AtomicOrdering ao);
-//        static std::string get_conv_kind(llvm::CallingConv::ID id);
-//        static std::string get_visibility_string(llvm::GlobalValue::VisibilityTypes gv_ty);
-//        static std::string get_linkage_string(llvm::GlobalValue::LinkageTypes gv_ty);
-//        static std::string get_mode_string(llvm::GlobalValue::ThreadLocalMode gv_ty);
+        std::map<std::string, std::string> dom_loc_map;
+        std::map<std::string, std::string> rel_loc_map;
 
     public:
 #define HANDLE_PRODUCE_DOM(name, desc) ProgramDom dom_ ##name { #name, desc };
@@ -135,9 +148,9 @@ namespace tea {
 #include "irmanager_trgts.def"
 
         static const std::map<std::string, std::string> consumed_doms_info;
-        static const std::map<std::string, std::pair<std::vector<std::string>, std::string>> consumed_rels_info;
+        static const std::map<std::string, RelInfo> consumed_rels_info;
         static const std::map<std::string, std::string> produced_doms_info;
-        static const std::map<std::string, std::pair<std::vector<std::string>, std::string>> produced_rels_info;
+        static const std::map<std::string, RelInfo> produced_rels_info;
     };
 }
-#endif //TEA_LLVM_CODEMANAGER_IRMANAGER_H
+#endif //TEA_LLVM_CODEMANAGER_IRMANAGER_BASE_H

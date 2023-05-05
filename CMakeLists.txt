@@ -35,7 +35,7 @@ endif()
 
 include_directories(include)
 
-add_library(irmanager_lib lib/irmanger.cpp)
+add_library(irmanager_lib lib/irmanager_instr.cpp lib/irmanager_base.cpp )
 target_link_libraries(irmanager_lib ${llvm_libs})
 
 option(BUILD_RPC "build RPC server" ON)

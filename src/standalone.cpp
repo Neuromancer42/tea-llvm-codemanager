@@ -1,6 +1,7 @@
 #include <iostream>
 #include <filesystem>
-#include "irmanager.h"
+#include <irmanager_instr.h>
+#include "instr_examples.h"
 
 using namespace std;
 using namespace tea;
@@ -39,11 +40,19 @@ int main(int argc, char** argv) {
             cout << ",\t" << p_rel_dom;
         cout << "\t" << p_rel_info.second.second << endl;
     }
+    cout << "Instrumentable rels of IRManager_Instr: " << endl;
+    for (const auto & instr_rel_info : InstrFactory::info_map) {
+        cout << "\t" << instr_rel_info.first;
+        for (const auto & instr_rel_dom : instr_rel_info.second.first) {
+            cout << ",\t" << instr_rel_dom;
+        }
+        cout << "\t" << instr_rel_info.second.second << endl;
+    }
 
     llvm::LLVMContext ctx;
     llvm::SMDiagnostic diag;
 
-    auto irm = unique_ptr<IRManager>(IRManager::createFromFile(filename, diag, ctx, workdir));
+    auto irm = unique_ptr<IRManager_Instr>(IRManager_Instr::createFromFile(filename, diag, ctx, workdir));
     irm->build_doms();
     irm->build_rels();
     cout << "Parsed module: " << irm->get_name() << endl;
@@ -58,6 +67,10 @@ int main(int argc, char** argv) {
     for (const auto & p_rel_info : IRManager::produced_rels_info) {
         const string & rel_name = p_rel_info.first;
         cout << "\t" << rel_name << ":\t" << irm->get_rel_loc(rel_name) << endl;
+    }
+    for (auto & instr_pair : InstrFactory::factory_map) {
+        irm->instr_map.emplace(instr_pair.first, instr_pair.second->create(irm.get()));
+        cout << "Registered instr: " << instr_pair.first << endl;
     }
     return 0;
 }

@@ -3,7 +3,7 @@
 //
 // Contributors: Yifan Chen, Tianyu Zhang
 
-#include "irmanager.h"
+#include "irmanager_base.h"
 
 using namespace tea;
 using namespace std;
@@ -27,12 +27,6 @@ void IRManager::save_all() {
 #define HANDLE_PRODUCE_DOM(name, desc) { std::string loc = dom_ ##name .save(workpath); dom_loc_map.emplace(#name, loc); }
 #define HANDLE_PRODUCE_REL(name, desc, ...) { std::string loc = rel_ ##name .save(workpath); rel_loc_map.emplace(#name, loc); }
 #include "irmanager_trgts.def"
-}
-
-IRManager::IRManager(const string& name, std::unique_ptr<llvm::Module> mod, const std::string & workdir) {
-    this->name = name;
-    this->module = std::move(mod);
-    this->workpath = workdir;
 }
 
 void IRManager::collect_element_maps() {
@@ -217,15 +211,15 @@ void IRManager::collect_value(llvm::Value * pVal) {
     if (rev_value_map.find(pVal) != rev_value_map.end())
         return;
     string val_name;
-    raw_string_ostream raw_os(val_name);
+    raw_string_ostream val_name_os(val_name);
     if (auto * pInst = dyn_cast<Instruction>(pVal)) {
         Function * pFunc = pInst->getFunction();
-        raw_os << rev_func_map[pFunc] << "-";
+        val_name_os << rev_func_map[pFunc] << "-";
     } else if (auto * pArg = dyn_cast<Argument>(pVal)) {
         Function * pFunc = pArg->getParent();
-        raw_os << rev_func_map[pFunc] << "-";
+        val_name_os << rev_func_map[pFunc] << "-";
     }
-    pVal->printAsOperand(raw_os);
+    pVal->printAsOperand(val_name_os);
     value_map.emplace(val_name, pVal);
     rev_value_map.emplace(pVal, val_name);
     collect_type(pVal->getType());

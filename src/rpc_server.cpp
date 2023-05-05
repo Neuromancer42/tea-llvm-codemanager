@@ -2,8 +2,8 @@
 // Created by Yifan Chen on 2023/1/12.
 //
 
-#include "analysis/analysis.grpc.pb.h"
-#include "irmanager.h"
+#include <irmanager_base.h>
+#include <analysis/analysis.grpc.pb.h>
 #include <google/protobuf/message.h>
 #include <grpcpp/server.h>
 #include <grpcpp/server_builder.h>
@@ -45,8 +45,6 @@ public:
         }
         return grpc::Status::OK;
     }
-
-
 
     grpc::Status Instrument(::grpc::ServerContext *context, const analysis::InstrumentRequest *request,
                             analysis::InstrumentResponse *response) override {

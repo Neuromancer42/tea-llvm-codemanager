@@ -1,7 +1,10 @@
 #include <iostream>
 #include <filesystem>
-#include <irmanager_instr.h>
-#include "instr_examples.h"
+#include "irmanager_instr.h"
+#include "instr_factory.h"
+#include "instr_examples/reachableM.h"
+#include "instr_examples/ci_IM.h"
+#include "instr_examples/ci_Vval.h"
 
 using namespace std;
 using namespace tea;
@@ -69,8 +72,14 @@ int main(int argc, char** argv) {
         cout << "\t" << rel_name << ":\t" << irm->get_rel_loc(rel_name) << endl;
     }
     for (auto & instr_pair : InstrFactory::factory_map) {
-        irm->instr_map.emplace(instr_pair.first, instr_pair.second->create(irm.get()));
+        irm->register_instr(instr_pair.first, instr_pair.second->create(irm.get()));
         cout << "Registered instr: " << instr_pair.first << endl;
     }
+    irm->gen_instrumented_exe();
+    cout << "Run tests: " << endl;
+    std::vector<IRManager_Instr::Tuple> triggered, negated;
+    irm->handle_test_req(vector<std::string>{"1"}, triggered, negated);
+    cout << "Triggered: " << triggered.size() << endl;
+    cout << "Negated: " << negated.size() << endl;
     return 0;
 }

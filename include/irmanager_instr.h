@@ -6,6 +6,7 @@
 #define TEA_LLVM_CODEMANAGER_IRMANAGER_INSTR_H
 
 #include "irmanager_base.h"
+#include <sstream>
 
 namespace tea {
     class IRManager_Instr;
@@ -18,6 +19,7 @@ namespace tea {
         virtual ~AbstractInstr() = default;
         virtual bool instrument(unsigned instr_id, const std::vector<std::string>& tuple) = 0;
         virtual std::pair<unsigned, bool> process(std::vector<int>& trace) = 0;
+        virtual std::string gen_instr_code() = 0;
     };
 
     class IRManager_Instr : public IRManager {
@@ -36,8 +38,14 @@ namespace tea {
         }
 
         IRManager_Instr(const std::string &name, std::unique_ptr<llvm::Module> mod, const std::string &workdir)
-            : IRManager(name, std::move(mod), workdir), instrumented_tuples()
-            {}
+            : IRManager(name, std::move(mod), workdir) {
+            instr_code << "#include \"stdio.h\"\n";
+            instr_code << "#define TEA_LOGFILE " << std::filesystem::absolute(log_path) << "\n";
+            instr_code << "#define TEA_LOG(fstr, ...) \\\n"
+                          "    FILE * tea_fp = fopen(TEA_LOGFILE, \"a+\"); \\\n"
+                          "    fprintf(tea_fp, fstr, __VA_ARGS__);       \\\n"
+                          "    fclose(tea_fp);  \n" << std::endl;
+        }
 
         bool handle_instrument_req(const std::string & rel_name, const std::vector<std::string>& tuple);
 
@@ -89,11 +97,14 @@ namespace tea {
                 return nullptr;
         }
 
-        std::map<std::string, std::unique_ptr<AbstractInstr>> instr_map;
-
+        void register_instr(const std::string & name, std::unique_ptr<AbstractInstr> instr);
 
     private:
         std::vector<Tuple> instrumented_tuples;
+        std::map<std::string, std::unique_ptr<AbstractInstr>> instr_map;
+        std::stringstream instr_code;
+        std::filesystem::path exe_path = workpath / "instrumented";
+        std::filesystem::path log_path = workpath / "tea_log.txt";
     };
 
 }

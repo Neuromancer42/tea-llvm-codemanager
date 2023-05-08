@@ -2,6 +2,7 @@
 // Created by Yifan Chen on 2023/5/6.
 //
 
+// Note: this file can only be included by client app and instr_code snippets
 #ifndef TEA_LLVM_CODEMANAGER_INSTR_FACTORY_H
 #define TEA_LLVM_CODEMANAGER_INSTR_FACTORY_H
 
@@ -16,10 +17,10 @@ namespace tea {
         }
 
     public:
-        static std::map <std::string, RelInfo> info_map;
+        static std::map<std::string, RelInfo> info_map;
         static std::map<std::string, InstrFactory *> factory_map;
 
-        virtual std::unique_ptr <AbstractInstr> create(IRManager_Instr *irm) = 0;
+        virtual std::unique_ptr<AbstractInstr> create(IRManager_Instr *irm) = 0;
     };
 
     std::map <std::string, RelInfo> InstrFactory::info_map;
@@ -30,7 +31,7 @@ namespace tea {
     public:
         InstrFactoryInstance() : InstrFactory(instrT::NAME, instrT::INFO) {}
 
-        std::unique_ptr <AbstractInstr> create(IRManager_Instr *irm) {
+        std::unique_ptr<AbstractInstr> create(IRManager_Instr *irm) override {
             return std::make_unique<instrT>(irm);
         }
     };

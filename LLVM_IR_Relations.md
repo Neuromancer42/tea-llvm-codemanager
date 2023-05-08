@@ -28,7 +28,7 @@ Control flow are represented as graphs over *basicblocks*, and each basicblock i
 
 domains: 
 * **B** for `BasicBlock`
-* **P** for `Instruction` (it's abbreviation of Program-point)
+* **P** for `Instruction` (it's abbreviation of Program-point), basic elements for building control-flow graph, in flow-sensitive analyses/
 
 relations:
 * `basicblock_pred(bb_pred:B, bb_next:B)`
@@ -42,7 +42,7 @@ Types are handled by the type system of LLVM IR. Necessary features of types are
 Though the string representation of type objects contains complete information, it is not recommended to parse from it.
 
 domains:
-* **T** for `Type`
+* **T** for `Type`, mark the properties of values
 
 relations:
 * Void Type
@@ -86,6 +86,8 @@ relations:
 * Unhandled types: `Token`, `Metadata`, `X86_amx`, `X86_mmx`
 
 ## Variables
+In llvm, it's in line with `value`s. In general, the set includes all targets that can be evaluated during runtime, 
+e.g. its integral value, where it points to, or what elements it has
 * Common for all variables (or operands)
   + `variable_type(v:V, ty:T)`
 * Constant data
@@ -169,7 +171,7 @@ relations:
 > --[LLVM Language Reference](https://llvm.org/docs/LangRef.html#functions)
 
 domains:
-* **M** for `Function`
+* **M** for `Function`, the main building module of inter-procedure analyses
 
 relations:
 * `main_function(fn:M)`, the main entry function (usually `main`)
@@ -349,3 +351,7 @@ relations:
     * conversion operations, `<castop>` = `trunc` / `zext` / `sext` / `fptoui` / `fptosi` / `uitofp` / `sitofp` / `fptrunc` / `fpext` / `ptrtoint` / `inttoptr` / `bitcast`
     * `icmp`, `<pred>` = `eq` / `ne` / `ugt` / `uge` / `ult` / `ule` / `sgt` / `sge` / `slt` / `sle`
     * `fcmp`, `<pred>` = `false` / `oeq` / `ogt` / `oge` / `olt` / `ole` / `one` / `ord` / `ueq` / `ugt` / `uge` / `ult` / `ule` / `une` / `uno` / `true`
+
+## others
+* **AS** for address space, some architecture (e.g. ARM) has separated address space, so it's necessary to mark different address spaces.
+* **ORD** in multi-threaded programs, it is necessary to distinguish different atomic orderings

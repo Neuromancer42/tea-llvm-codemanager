@@ -18,8 +18,8 @@ const map<string, string> IRManager::produced_doms_info = {
 };
 
 const map<std::string, pair<vector<string>, string>> IRManager::produced_rels_info = {
-#define DOM(name) #name
-#define HANDLE_PRODUCE_REL(name, desc, ...) { #name, {{ __VA_ARGS__ }, desc }},
+#define ATTR(name, dname) #dname
+#define HANDLE_PRODUCE_REL(name, desc, ...) { #name, {{ __VA_ARGS__ }, #__VA_ARGS__ ":" desc }},
 #include "irmanager_trgts.def"
 };
 

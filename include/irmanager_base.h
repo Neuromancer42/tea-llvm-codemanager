@@ -143,7 +143,7 @@ namespace tea {
 #define HANDLE_PRODUCE_DOM(name, desc) ProgramDom dom_ ##name { #name, desc };
 #include "irmanager_trgts.def"
 
-#define DOM(name) &dom_ ##name
+#define ATTR(name, dname) &dom_ ##dname
 #define HANDLE_PRODUCE_REL(name, desc, ...) ProgramRel<std::tuple_size<decltype(std::make_tuple(__VA_ARGS__))>::value> rel_ ##name { #name, { __VA_ARGS__ }, desc };
 #include "irmanager_trgts.def"
 

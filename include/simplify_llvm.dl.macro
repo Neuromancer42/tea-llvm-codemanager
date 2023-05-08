@@ -1,0 +1,5 @@
+#define HANDLE_PRODUCE_DOM(name, desc) .decl name <: unsigned // desc
+#define ATTR(name,dname) name:dname
+#define HANDLE_PRODUCE_REL(name, desc, ...) .decl name(__VA_ARGS__) // desc
+#include "irmanager_trgts.def"
+#define HANDLE_PRODUCE_REL(name, desc, ...) .input name

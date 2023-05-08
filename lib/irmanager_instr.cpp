@@ -45,7 +45,7 @@ void IRManager_Instr::gen_instrumented_exe() {
     exe_oss << CLANG_EXE << " " << src_path << " " << instr_path;
     exe_oss << " -o " << exe_path;
     int rc = system(exe_oss.str().c_str());
-    assert(rc != 0 && "compilation failed");
+    assert(rc == 0 && "compilation failed");
 }
 
 void IRManager_Instr::handle_test_req(const vector<string>& args, vector<Tuple> & triggered_tuples, vector<Tuple> & negated_tuples){

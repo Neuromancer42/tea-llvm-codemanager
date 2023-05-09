@@ -3,3 +3,4 @@
 #define HANDLE_PRODUCE_REL(name, desc, ...) .decl name(__VA_ARGS__) // desc
 #include "irmanager_trgts.def"
 #define HANDLE_PRODUCE_REL(name, desc, ...) .input name
+#include "irmanager_trgts.def"

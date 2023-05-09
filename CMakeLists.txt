@@ -89,4 +89,5 @@ add_executable(irmanager_standalone src/standalone.cpp)
 target_link_libraries(irmanager_standalone irmanager_lib)
 
 add_executable(irmanager_testparser test/test-parser.cpp)
+target_include_directories(irmanager_testparser PRIVATE src/)
 target_link_libraries(irmanager_testparser irmanager_lib)

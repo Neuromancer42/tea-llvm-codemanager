@@ -49,8 +49,6 @@ namespace tea {
 
         bool handle_instrument_req(const std::string & rel_name, const std::vector<std::string>& tuple);
 
-        void gen_instrumented_exe();
-
         void handle_test_req(const std::vector<std::string> & args, std::vector<Tuple> & triggered_tuples, std::vector<Tuple> & negated_tuples);
 
         inline llvm::Module * get_module() {
@@ -100,6 +98,9 @@ namespace tea {
         void register_instr(const std::string & name, std::unique_ptr<AbstractInstr> instr);
 
     private:
+        void gen_instrumented_exe();
+        bool compiled = false;
+
         std::vector<Tuple> instrumented_tuples;
         std::map<std::string, std::unique_ptr<AbstractInstr>> instr_map;
         std::stringstream instr_code;

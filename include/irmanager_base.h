@@ -23,6 +23,7 @@ namespace tea {
     typedef std::pair<std::vector<std::string>, std::string> RelInfo;
     class IRManager {
     public:
+        inline static std::string ANALYSIS = "irmanager";
         static IRManager* createFromFile(const std::string& filename, llvm::SMDiagnostic & diag, llvm::LLVMContext & ctx, const std::string & workdir) {
             auto mod = llvm::parseIRFile(filename, diag, ctx);
             if (mod == nullptr) {

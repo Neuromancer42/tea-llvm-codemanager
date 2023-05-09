@@ -77,7 +77,6 @@ int main(int argc, char** argv) {
             cout << endl;
         }
     }
-    irm->gen_instrumented_exe();
     vector<pair<string, vector<string>>> triggered, negated;
     irm->handle_test_req({}, triggered, negated);
     for (auto & t : triggered) {

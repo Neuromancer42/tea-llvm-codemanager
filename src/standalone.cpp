@@ -75,7 +75,6 @@ int main(int argc, char** argv) {
         irm->register_instr(instr_pair.first, instr_pair.second->create(irm.get()));
         cout << "Registered instr: " << instr_pair.first << endl;
     }
-    irm->gen_instrumented_exe();
     cout << "Run tests: " << endl;
     std::vector<IRManager_Instr::Tuple> triggered, negated;
     irm->handle_test_req(vector<std::string>{"1"}, triggered, negated);

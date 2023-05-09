@@ -49,6 +49,10 @@ void IRManager_Instr::gen_instrumented_exe() {
 }
 
 void IRManager_Instr::handle_test_req(const vector<string>& args, vector<Tuple> & triggered_tuples, vector<Tuple> & negated_tuples){
+    if (!compiled) {
+        gen_instrumented_exe();
+        compiled = true;
+    }
     std::ostringstream exe_oss;
     exe_oss << exe_path;
     for (auto & arg : args) {

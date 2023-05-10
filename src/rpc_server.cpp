@@ -30,6 +30,7 @@ public:
 
     grpc::Status GetFeature(::grpc::ServerContext *context, const analysis::Configs *request,
                             analysis::ProviderInfo *response) override {
+        clog << "*** processing GetFeature request: " << request->ShortDebugString() << endl;
         response->set_name(NAME);
         {   // set analysis info of irmmanager
             auto *analysis_info = response->add_analysis();
@@ -42,8 +43,7 @@ public:
             for (auto &rel_pair: IRManager::produced_rels_info) {
                 auto *rel_info = analysis_info->add_producing_rel();
                 rel_info->set_name(rel_pair.first);
-                for (auto &rel_dom: rel_pair.second.first)
-                    rel_info->add_dom(rel_dom);
+                *rel_info->mutable_dom() = {rel_pair.second.first.begin(), rel_pair.second.first.end()};
                 rel_info->set_description(rel_pair.second.second);
             }
         }
@@ -51,8 +51,7 @@ public:
             for (auto &instr_rel_pair: InstrFactory::info_map) {
                 auto *rel_info = response->add_observable_rel();
                 rel_info->set_name(instr_rel_pair.first);
-                for (auto &rel_dom: instr_rel_pair.second.first)
-                    rel_info->add_dom(rel_dom);
+                *rel_info->mutable_dom() = {instr_rel_pair.second.first.begin(), instr_rel_pair.second.first.end()};
                 rel_info->set_description(instr_rel_pair.second.second);
             }
         }
@@ -61,7 +60,7 @@ public:
 
     grpc::Status RunAnalysis(::grpc::ServerContext *context, const analysis::RunRequest *request,
                              analysis::RunResults *response) override {
-        clog << "Processing RunAnalysis request: " << request->ShortDebugString() << endl;
+        clog << "*** processing RunAnalysis request: " << request->ShortDebugString() << endl;
         if (request->analysis_name() == IRManager::ANALYSIS) {
             if (request->option().property().find("tea.source") == request->option().property().end()) {
                 response->set_msg("FAIL: No source file specified");
@@ -74,7 +73,7 @@ public:
                 bool succ = filesystem::is_directory(proj_path) || filesystem::create_directories(proj_path);
                 if (!succ) {
                     string msg = "failed to create working directory for project " + proj_id + ": " + proj_path.string();
-                    cerr << "IRmanager: " << msg << endl;
+                    cerr << "*** " << msg << endl;
                     response->set_msg("FAIL: " + msg);
                 } else {
                     map_manager[proj_id] = unique_ptr<IRManager_Instr>(
@@ -97,8 +96,7 @@ public:
                         string rel_loc = irm->get_rel_loc(rel_name);
                         auto *rel = response->add_rel_output();
                         rel->mutable_info()->set_name(rel_name);
-                        for (auto &rel_dom: rel_info.second.first)
-                            rel->mutable_info()->add_dom(rel_dom);
+                        *rel->mutable_info()->mutable_dom() = {rel_info.second.first.begin(), rel_info.second.first.end()};
                         rel->mutable_info()->set_description(rel_info.second.second);
                         rel->set_location(rel_loc);
                     }
@@ -110,11 +108,11 @@ public:
 
     grpc::Status Instrument(::grpc::ServerContext *context, const analysis::InstrumentRequest *request,
                             analysis::InstrumentResponse *response) override {
+        clog << "*** processing Instrument request: " << request->ShortDebugString() << endl;
         const string &proj_id = request->project_id();
         if (map_manager.find(proj_id) == map_manager.end()) {
-            cerr << "LLVMParser: project " << proj_id << " never parsed before instrumenting" << endl;
+            cerr << "*** project " << proj_id << " never parsed before instrumenting" << endl;
         } else {
-            cout << "LLVMParser: procesing instrumenting request for proj " << proj_id << endl;
             auto & irm = map_manager[proj_id];
             for (auto & tuple : request->instr_tuple()) {
                 string rel_name = tuple.rel_name();
@@ -123,8 +121,7 @@ public:
                 if (succ) {
                     auto * succ_tuple = response->add_succ_tuple();
                     succ_tuple->set_rel_name(rel_name);
-                    for (auto & t : attrs)
-                        succ_tuple->add_attribute(t);
+                    *succ_tuple->mutable_attribute() = {attrs.begin(), attrs.end()};
                 }
             }
         }
@@ -138,14 +135,11 @@ public:
 
     grpc::Status Test(::grpc::ServerContext *context, const analysis::TestRequest *request,
                       analysis::TestResponse *response) override {
+        clog << "*** processing Test request: " << request->ShortDebugString() << endl;
         const string &proj_id = request->project_id();
         if (map_manager.find(proj_id) == map_manager.end()) {
-            cerr << "LLVMParser: project " << proj_id << " never parsed before testing" << endl;
+            cerr << "*** project " << proj_id << " never parsed before testing" << endl;
         } else {
-            cout << "LLVMParser: processing testing request for proj " << proj_id << " with args:";
-            for (auto & arg : request->arg())
-                cout << " " << arg;
-            cout << endl;
 
             vector<string> args(request->arg().begin(), request->arg().end());
             vector<pair<string, vector<string>>> triggered, negated;
@@ -153,14 +147,12 @@ public:
             for (auto & t : triggered) {
                 auto * tuple = response->add_triggered_tuple();
                 tuple->set_rel_name(t.first);
-                for (auto & attr : t.second)
-                    tuple->add_attribute(attr);
+                *tuple->mutable_attribute() = {t.second.begin(), t.second.end()};
             }
             for (auto & t : negated) {
                 auto * tuple = response->add_negated_tuple();
                 tuple->set_rel_name(t.first);
-                for (auto & attr : t.second)
-                    tuple->add_attribute(attr);
+                *tuple->mutable_attribute() = {t.second.begin(), t.second.end()};
             }
         }
         return grpc::Status::OK;
@@ -168,14 +160,15 @@ public:
 
     grpc::Status Shutdown(::grpc::ServerContext *context, const analysis::ShutdownRequest *request,
                           analysis::ShutdownResponse *response) override {
+        clog << "*** processing Shutdown request: " << request->ShortDebugString() << endl;
         const string &proj_id = request->project_id();
         if (map_manager.find(proj_id) == map_manager.end()) {
-            cerr << "LLVMParser: project " << proj_id << " never parsed before shutdown" << endl;
+            cerr << "*** project " << proj_id << " never parsed before shutdown" << endl;
         } else {
             map_manager.erase(proj_id);
             map_ctx.erase(proj_id);
             map_diag.erase(proj_id);
-            cout << "LLVMParser: release project " << proj_id << endl;
+            clog << "*** release project " << proj_id << endl;
         }
         return grpc::Status::OK;
     }
@@ -229,7 +222,7 @@ int main(int argc, char** argv) {
         cerr << "*** failed to create working directory " << workdir << endl;
         return -1;
     } else {
-        cout << "*** llvm server works in directory " << filesystem::absolute(workdir) << endl;
+        clog << "*** llvm server works in directory " << filesystem::absolute(workdir) << endl;
     }
     LLVMProvider provider(workdir);
 
@@ -238,7 +231,7 @@ int main(int argc, char** argv) {
     builder.AddListeningPort(server_addr, grpc::InsecureServerCredentials());
     builder.RegisterService(&provider);
     unique_ptr<grpc::Server> server(builder.BuildAndStart());
-    cout << "*** llvm server started on port " << server_port << endl;
+    clog << "*** llvm server started on port " << server_port << endl;
     server->Wait();
     return 0;
 }

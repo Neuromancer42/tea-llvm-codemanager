@@ -30,7 +30,7 @@ namespace tea {
             return description;
         }
 
-        std::string save(const std::filesystem::path& outpath) const {
+        [[nodiscard]] std::string save(const std::filesystem::path& outpath) const {
             std::filesystem::path mappath = outpath / (name + ".map");
 
             std::ofstream mapofs;
@@ -45,7 +45,7 @@ namespace tea {
             domofs << name << " " << elements.size() << " "
                 << std::filesystem::absolute(outpath).string()
                 << std::endl;
-            return outpath.string();
+            return std::filesystem::absolute(outpath);
         }
 
         void add(const std::string& elem) {
@@ -93,7 +93,7 @@ namespace tea {
             return description;
         }
 
-        std::string save(const std::filesystem::path& outpath) const {
+        [[nodiscard]] std::string save(const std::filesystem::path& outpath) const {
             std::filesystem::path csvpath = outpath / (name + ".csv");
             std::ofstream ofs;
             ofs.open(csvpath);
@@ -107,7 +107,7 @@ namespace tea {
             }
             ofs.close();
             // TODO: clear in-memory vector<array> after saving?
-            return csvpath.string();
+            return std::filesystem::absolute(csvpath);
         }
 
         void add(std::array<std::string, N>&& attrs) {

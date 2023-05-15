@@ -30,6 +30,8 @@ entry:
   %e = alloca %struct.aaaa, align 8
   %f = alloca [2 x %struct.aaaa], align 16
   %g = alloca ptr, align 8
+  %saved_stack = alloca ptr, align 8
+  %__vla_expr0 = alloca i64, align 8
   store i32 0, ptr %retval, align 4
   store i32 0, ptr %a, align 4
   %0 = load i32, ptr %a, align 4
@@ -52,10 +54,27 @@ entry:
   %arrayidx6 = getelementptr inbounds [114 x double], ptr %k5, i64 0, i64 3
   store double 1.300000e+00, ptr %arrayidx6, align 8
   %2 = load i32, ptr %b, align 4
-  ret i32 %2
+  %3 = zext i32 %2 to i64
+  %4 = call ptr @llvm.stacksave()
+  store ptr %4, ptr %saved_stack, align 8
+  %vla = alloca i32, i64 %3, align 16
+  store i64 %3, ptr %__vla_expr0, align 8
+  %5 = load i32, ptr %b, align 4
+  store i32 %5, ptr %retval, align 4
+  %6 = load ptr, ptr %saved_stack, align 8
+  call void @llvm.stackrestore(ptr %6)
+  %7 = load i32, ptr %retval, align 4
+  ret i32 %7
 }
 
+; Function Attrs: nocallback nofree nosync nounwind willreturn
+declare ptr @llvm.stacksave() #1
+
+; Function Attrs: nocallback nofree nosync nounwind willreturn
+declare void @llvm.stackrestore(ptr) #1
+
 attributes #0 = { noinline nounwind optnone ssp uwtable "frame-pointer"="all" "min-legal-vector-width"="0" "no-trapping-math"="true" "stack-protector-buffer-size"="8" "target-cpu"="penryn" "target-features"="+cx16,+cx8,+fxsr,+mmx,+sahf,+sse,+sse2,+sse3,+sse4.1,+ssse3,+x87" "tune-cpu"="generic" }
+attributes #1 = { nocallback nofree nosync nounwind willreturn }
 
 !llvm.module.flags = !{!0, !1, !2, !3}
 !llvm.ident = !{!4}

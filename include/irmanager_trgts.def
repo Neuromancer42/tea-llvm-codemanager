@@ -74,7 +74,11 @@ instruction_next, \
 "", \
 ATTR(inst,P), ATTR(next,P) \
 )
-
+HANDLE_PRODUCE_REL( \
+basicblock_function, \
+"", \
+ATTR(bb,B), ATTR(f,M) \
+)
 /* types */
 HANDLE_PRODUCE_REL( \
 void_type, \
@@ -153,7 +157,7 @@ ATTR(ty,T), ATTR(size,C) \
 HANDLE_PRODUCE_REL( \
 vector_type_min_size, \
 "a scalable vector type `ty` has minimum length `min_size`", \
-ATTR(ty,T), ATTR(min,C) \
+ATTR(ty,T), ATTR(size,C) \
 )
 HANDLE_PRODUCE_REL( \
 vector_type_component, \
@@ -267,7 +271,7 @@ ATTR(v,V), ATTR(n,Z) \
 HANDLE_PRODUCE_REL( \
 variable_const_struct_field, \
 "", \
-ATTR(v,V), ATTR(i,Z), ATTR(v,V) \
+ATTR(v,V), ATTR(i,Z), ATTR(fval,V) \
 )
 HANDLE_PRODUCE_REL( \
 variable_const_array, \
@@ -313,6 +317,11 @@ HANDLE_PRODUCE_REL( \
 variable_undef_poison, \
 "", \
 ATTR(v,V) \
+)
+HANDLE_PRODUCE_REL( \
+variable_local, \
+"variable is local to a function", \
+ATTR(v,V), ATTR(m,M) \
 )
 HANDLE_PRODUCE_REL( \
 variable_global, \
@@ -1354,7 +1363,7 @@ ATTR(inst,P) \
 HANDLE_PRODUCE_REL( \
 instruction_select_expr, \
 "", \
-ATTR(inst,P), ATTR(res,V), ATTR(cond,V), ATTR(true,V), ATTR(false,V) \
+ATTR(inst,P), ATTR(res,V), ATTR(cond,V), ATTR(trueval,V), ATTR(falseval,V) \
 )
 HANDLE_PRODUCE_REL( \
 instruction_freeze, \

@@ -1,6 +1,8 @@
-#define HANDLE_PRODUCE_DOM(name, desc) .decl name <: unsigned // desc
+// BEGIN of AUTO-GENERATED LLVM RULE, do not modify them directly
+#define HANDLE_PRODUCE_DOM(name, desc) .type name <: unsigned // desc
 #define ATTR(name,dname) name:dname
 #define HANDLE_PRODUCE_REL(name, desc, ...) .decl name(__VA_ARGS__) // desc
 #include "irmanager_trgts.def"
 #define HANDLE_PRODUCE_REL(name, desc, ...) .input name
 #include "irmanager_trgts.def"
+// END of AUTO-GENERATED LLVM RULES

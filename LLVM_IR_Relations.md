@@ -36,6 +36,7 @@ relations:
 * `basicblock_exit(bb:B, exit_inst:P)`
 * `instruction_basicblock(inst:P, bb:B)`, an instruction `inst` belongs to a basicblock `bb`
 * `instruction_next(inst:P, next:P)`
+* `basicblock_function(bb:B, fn:M)`
 
 ## Types
 Types are handled by the type system of LLVM IR. Necessary features of types are recorded (and abstracted) via relation predicates.
@@ -83,7 +84,7 @@ relations:
   + `struct_type_field(ty:T, i:Z, f_ty:T)`, the `i`-th field of struct type `ty` has type `f_ty`
 * Label
   + `label(ty:T)`
-* Unhandled types: `Token`, `Metadata`, `X86_amx`, `X86_mmx`
+* Unhandled types: `Token`, `Metadata`, `X86_amx`, `X86_mmx`, just mark them
 
 ## Variables
 In llvm, it's in line with `value`s. In general, the set includes all targets that can be evaluated during runtime, 
@@ -149,6 +150,10 @@ e.g. its integral value, where it points to, or what elements it has
     - `operation_extractvalue_base(res:V, base:V)`
     - `operation_extractvalue_nindices(res:V, n:Z)`
     - `operation_extractvalue_index(res:V, i:Z, id:Z)`
+    - `operation_insertvalue_base(res:V, base:V)`
+    - `operation_insertvalue_elem(res:V, elem:V)`
+    - `operation_insertvalue_nindices(res:V, n:Z)`
+    - `operation_insertvalue_index(res:V, i:Z, id:Z)`
   + `getelementptr`
     - `operation_gep_inbounds(res:V)`
     - `operation_gep_base(res:V, addr:V)`
@@ -251,13 +256,6 @@ relations:
     + `instruction_cleanupret_unwindcaller(inst:P)`
   * `unreachable`
     + `instruction_unreachable(inst:P)`, instruction `inst` is unreachable
-  + `insertvalue`
-    * `instruction_insertvalue(inst:P)`, instruction `inst` is an insertvalue operation
-    * `instruction_insertvalue_res(inst:P, res:V)`
-    * `instruction_insertvalue_base(inst:P, base:V)`
-    * `instruction_insertvalue_elem(inst:P, elem:V)`
-    * `instruction_insertvalue_nindices(inst:P, n:Z)`
-    * `instruction_insertvalue_index(inst:P, i:Z, id:Z)`
 - memory access and addressing operations
   + `alloca`
     * `instruction_alloca(inst:P)`

@@ -546,8 +546,10 @@ void IRManager::build_value_rels() {
             rel_variable_constexpr.add({val_n});
             Instruction * pPhonyInst = pConstExpr->getAsInstruction();
             add_op_rel(pConstExpr, pPhonyInst);
+        } else if (auto * pInst = dyn_cast<Instruction>(pVar)) {
+            pFunc = pInst->getFunction();
+            rel_variable_local.add({val_n, rev_func_map[pFunc]});
         }
-        // TODO build constant relations
     }
 }
 
@@ -904,6 +906,9 @@ void IRManager::build_controlflow_rels() {
                 rel_instruction_next.add({inst_id, next_id});
             }
         }
+        // basicblock_function(bb:B, f:M)
+        Function * pFunc = pBB->getParent();
+        rel_basicblock_function.add({bb_n, rev_func_map[pFunc]});
     }
 }
 
@@ -1252,7 +1257,6 @@ void IRManager::build_instruction_rels() {
             // instruction_load_ptr(inst:P, ptr:V)
             Value * pPtr = pLoad->getPointerOperand();
             rel_instruction_load_ptr.add({inst_str, rev_value_map[pPtr]});
-            // TODO: check pLoad->getPointerOperandType()
             // instruction_load_align(inst:P, align:C)
             Align align = pLoad->getAlign();
             rel_instruction_load_align.add({inst_str, to_string(align.value())});

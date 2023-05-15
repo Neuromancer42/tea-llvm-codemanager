@@ -27,5 +27,6 @@ int main() {
     f[0].k[2] = 0.2;
     struct aaaa * g = f;
     g[1].k[3] = 1.3;
+    int h[b];
     return b;
 }

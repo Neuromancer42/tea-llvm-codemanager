@@ -50,13 +50,15 @@ namespace tea {
             assert (pFunc != nullptr && "unknown function for ci_IM");
 //            if (pInst == nullptr || pFunc == nullptr) return false;
             if (auto *pInvkInst = llvm::dyn_cast<llvm::CallInst>(pInst)) {
-                llvm::Value *pAddr = pInvkInst->getCalledOperand();
-                llvm::IRBuilder<> builder(pInvkInst);
+                if (pInvkInst->isIndirectCall()) {
+                    llvm::Value *pAddr = pInvkInst->getCalledOperand();
+                    llvm::IRBuilder<> builder(pInvkInst);
 
-                llvm::Value *v_instr_id = llvm::ConstantInt::get(intType, instr_id);
+                    llvm::Value *v_instr_id = llvm::ConstantInt::get(intType, instr_id);
 
-                builder.CreateCall(callee_ci_IM, {v_instr_id, pAddr, pFunc});
-                return true;
+                    builder.CreateCall(callee_ci_IM, {v_instr_id, pAddr, pFunc});
+                    return true;
+                }
             }
             return false;
         }

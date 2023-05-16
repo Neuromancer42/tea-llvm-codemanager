@@ -44,8 +44,10 @@ namespace tea {
             if (tuple.size() != 2) return false;
             const std::string &var_repr = tuple[0];
             const std::string &itv_repr = tuple[1];
-            if (itv_repr.substr(0, 5) != "Itv:{" && itv_repr.substr(0, 5) != "Itv:[")
+            if (itv_repr.substr(0, 5) != "Itv:{" && itv_repr.substr(0, 5) != "Itv:[") {
+                std::cout << "*** instr_ci_Vval: skip ci_Vval( " << var_repr << " , " << itv_repr << " )" << std::endl;
                 return false;
+            }
 
             llvm::Value * pVal = irm->get_value(var_repr);
             assert(pVal != nullptr && "unknown value for ci_Vval");
@@ -60,6 +62,7 @@ namespace tea {
                 instr_itv_map.emplace(instr_id, itv_repr);
                 return true;
             }
+            std::cout << "*** instr_ci_Vval: skip ci_Vval( " << var_repr << " , " << itv_repr << " )" << std::endl;
             return false;
         }
 

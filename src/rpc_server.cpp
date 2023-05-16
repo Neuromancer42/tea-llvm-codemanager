@@ -4,7 +4,7 @@
 
 #include <irmanager_instr.h>
 #include <instr_factory.h>
-#include "instr_examples/reachableM.h"
+//#include "instr_examples/reachableM.h"
 #include "instr_examples/ci_IM.h"
 #include "instr_examples/ci_Vval.h"
 #include <analysis/analysis.grpc.pb.h>
@@ -100,6 +100,10 @@ public:
                         rel->mutable_info()->set_description(rel_info.second.second);
                         rel->set_location(rel_loc);
                     }
+                    for (auto & instr_pair : InstrFactory::factory_map) {
+                        irm->register_instr(instr_pair.first, instr_pair.second->create(irm.get()));
+                        cout << "*** register instr " << instr_pair.first << " to proj " << proj_id << endl;
+                    }
                 }
             }
         }
@@ -140,7 +144,6 @@ public:
         if (map_manager.find(proj_id) == map_manager.end()) {
             cerr << "*** project " << proj_id << " never parsed before testing" << endl;
         } else {
-
             vector<string> args(request->arg().begin(), request->arg().end());
             vector<pair<string, vector<string>>> triggered, negated;
             map_manager[proj_id]->handle_test_req(args, triggered, negated);

@@ -43,6 +43,8 @@ void IRManager_Instr::gen_instrumented_exe() {
     // compile and link them
     std::ostringstream exe_oss;
     exe_oss << CLANG_EXE << " " << src_path << " " << instr_path;
+    // temporary workaround: add as many linker flags as necessary
+    exe_oss << " -lintl" << " -liconv" << " -lpcre";
     exe_oss << " -o " << exe_path;
     int rc = system(exe_oss.str().c_str());
     assert(rc == 0 && "compilation failed");
@@ -58,7 +60,10 @@ void IRManager_Instr::handle_test_req(const vector<string>& args, vector<Tuple> 
     for (auto & arg : args) {
         exe_oss << " " << arg;
     }
-    exe_oss << " >test.out 2>test.err";
+    std::filesystem::path outpath = workpath / ("test." + to_string(test_id) + ".out");
+    std::filesystem::path errpath = workpath / ("test." + to_string(test_id) + ".err");
+    exe_oss << " >" << outpath << " 2>" << errpath;
+    test_id++;
     system(exe_oss.str().c_str());
     ifstream trace_ifs;
     trace_ifs.open(log_path);

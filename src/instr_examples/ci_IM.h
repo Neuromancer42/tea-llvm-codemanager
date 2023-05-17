@@ -57,8 +57,11 @@ namespace tea {
                     llvm::Value *v_instr_id = llvm::ConstantInt::get(intType, instr_id);
 
                     builder.CreateCall(callee_ci_IM, {v_instr_id, pAddr, pFunc});
+                    std::cout << "*** instr_ci_IM: instrumented #" << instr_id << " ci_IM( " << invk_inst_repr << " , " << meth_repr << " )" << std::endl;
                     return true;
                 }
+            } else {
+                std::cout << "*** instr_ci_IM: not a callsite ci_IM( " << invk_inst_repr << " , " << meth_repr << " )" << std::endl;
             }
             return false;
         }
@@ -67,6 +70,7 @@ namespace tea {
             assert(trace.size() == 2 && "mismatch trace length for ci_IM");
             unsigned instr_id = trace[0];
             bool call_edge_matched = trace[1];
+            std::cout << "*** instr_ci_IM: " << ( call_edge_matched ? "triggered" : "negated") << " #" << instr_id << std::endl;
             return std::make_pair(instr_id, call_edge_matched);
         }
     };

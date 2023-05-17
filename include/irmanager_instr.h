@@ -106,6 +106,7 @@ namespace tea {
         std::stringstream instr_code;
         std::filesystem::path exe_path = workpath / "instrumented";
         std::filesystem::path log_path = workpath / "tea_log.txt";
+        size_t test_id = 0;
     };
 
 }

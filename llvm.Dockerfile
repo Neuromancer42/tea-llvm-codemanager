@@ -71,9 +71,10 @@ RUN git clone -b ${grpc_version} https://github.com/grpc/grpc --recurse-submodul
 WORKDIR grpc/cmake/build/
 RUN cmake ../.. -GNinja \
     -DCMAKE_BUILD_TYPE=Release \
-    -DBUILD_SHARED_LIBS=On \
-    -DgRPC_INSTALL=On \
     -DCMAKE_INSTALL_PREFIX=/opt/grpc-${grpc_version} \
+    -DgRPC_INSTALL=ON \
+    -DgRPC_BUILD_TESTS=OFF \
+    -DgRPC_ZLIB_PROVIDER="package" \
     && cmake --build . \
     && cmake --build . --target install
 
@@ -86,11 +87,24 @@ ENV PATH=${LLVM_DIR}/bin:$PATH
 
 ARG grpc_version=v1.54.0
 ENV GRPC_DIR=/opt/grpc-${grpc_version}
+ENV PROTOBUF_DIR=${GRPC_DIR}
 COPY --from=grpc-builder ${GRPC_DIR} ${GRPC_DIR}
 ENV PATH=${GRPC_DIR}/bin:$PATH
 
 WORKDIR /ws
 
+FROM tea-llvm-env AS tea-llvm-devenv
+WORKDIR /tea
+COPY tea-llvm-codemanager/ ./tea-llvm-codemanager
+COPY proto/ ./proto
+WORKDIR tea-llvm-codemanager
 
+FROM tea-llvm-devenv AS tea-llvm-build
+RUN cmake -S . -B cmake-build-debug -GNinja -DCMAKE_BUILD_TYPE=Debug && cmake --build cmake-build-debug
+RUN cmake --install cmake-build-debug --prefix /opt/tea
 
+FROM tea-llvm-build AS tea-llvm-codemanager
+COPY --from=tea-llvm-build /opt/tea /opt/tea
+WORKDIR /ws
 
+FROM tea-llvm-devenv

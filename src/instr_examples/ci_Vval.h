@@ -53,14 +53,28 @@ namespace tea {
             assert(pVal != nullptr && "unknown value for ci_Vval");
 //            if (pVal == nullptr) return false;
             if (auto *pValInst = llvm::dyn_cast<llvm::Instruction>(pVal)) {
-                llvm::IRBuilder<> builder(pValInst->getNextNonDebugInstruction());
+                // Note: only check phi results to reduce instrument sites
+                if (llvm::isa<llvm::PHINode>(pValInst) || llvm::isa<llvm::LoadInst>(pValInst)) {
+                    llvm::Instruction *instrSite = pValInst->getNextNonDebugInstruction();
+                    while (llvm::isa_and_nonnull<llvm::PHINode>(instrSite)) {
+                        instrSite = instrSite->getNextNonDebugInstruction();
+                    }
+                    std::unique_ptr<llvm::IRBuilder<>> builder;
+                    if (instrSite != nullptr) {
+                        builder = std::make_unique<llvm::IRBuilder<>>(instrSite);
+                    } else {
+                        builder = std::make_unique<llvm::IRBuilder<>>(pValInst->getParent());
+                    }
+                    llvm::Value *v_instr_id = llvm::ConstantInt::get(intType, instr_id);
+                    builder->CreateCall(callee_ci_Vval, {v_instr_id, pValInst});
 
-                llvm::Value *v_instr_id = llvm::ConstantInt::get(intType, instr_id);
-                builder.CreateCall(callee_ci_Vval, {v_instr_id, pValInst});
+                    // associate instr_id with abstract interval
+                    instr_itv_map.emplace(instr_id, itv_repr);
+                    std::cout << "*** instr_ci_Vval: instrumented #" << instr_id << " ci_Vval( " << var_repr
+                              << " , " << itv_repr << " )" << std::endl;
 
-                // associate instr_id with abstract interval
-                instr_itv_map.emplace(instr_id, itv_repr);
-                return true;
+                    return true;
+                }
             }
             std::cout << "*** instr_ci_Vval: skip ci_Vval( " << var_repr << " , " << itv_repr << " )" << std::endl;
             return false;

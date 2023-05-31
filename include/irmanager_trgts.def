@@ -81,6 +81,11 @@ ATTR(bb,B), ATTR(f,M) \
 )
 /* types */
 HANDLE_PRODUCE_REL( \
+type_width, \
+"the allocated bytes needed for a type", \
+ATTR(t,T), ATTR(sz,C) \
+)
+HANDLE_PRODUCE_REL( \
 void_type, \
 "", \
 ATTR(t,T) \

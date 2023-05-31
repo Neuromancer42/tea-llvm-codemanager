@@ -181,6 +181,12 @@ void IRManager::collect_type(llvm::Type * pTy) {
     pTy->print(raw_os, true, true);
     rev_type_map.emplace(pTy, ty_name);
     type_map.emplace(ty_name, pTy);
+    if (pTy->isSized()) {
+//            cout << "*** get size for type : " << ty_str << endl;
+        TypeSize tySize = module->getDataLayout().getTypeAllocSize(pTy);
+        size_t size = tySize.getKnownMinValue();
+        const_sizealign_set.insert(size);
+    }
     if (auto * pFnTy = dyn_cast<FunctionType>(pTy)) {
         unsigned num_args = pFnTy->getNumParams();
         if (num_args > max_z)
@@ -276,9 +282,14 @@ string IRManager::get_name() {
 
 void IRManager::build_type_rels() {
     // TODO: build rev_type_map somewhere
-    for (const auto& type_pair : rev_type_map) {
-        Type* pTy = type_pair.first;
-        const string& ty_str = type_pair.second;
+    for (const auto& type_pair : type_map) {
+        const string& ty_str = type_pair.first;
+        Type* pTy = type_pair.second;
+        if (pTy->isSized()) {
+            TypeSize tySize = module->getDataLayout().getTypeAllocSize(pTy);
+            size_t size = tySize.getKnownMinValue();
+            rel_type_width.add({ty_str, to_string(size)});
+        }
         switch (pTy->getTypeID()) {
             case Type::VoidTyID: {
                 // void_type(ty:T)
@@ -613,11 +624,11 @@ void IRManager::add_op_rel(llvm::Value *pRes, llvm::Instruction *pInst) {
         unsigned num_indices = pGep->getNumIndices();
         rel_operation_gep_nindices.add({rev_value_map[pRes], to_string(num_indices)});
         // operation_gep_index(res:V, i:Z, val:V)
-        Use * op_list = pGep->getOperandList();
-        rel_operation_gep_index_offset.add({rev_value_map[pRes], to_string(0), rev_value_map[op_list[0].get()]});
+        Use * op_list = pGep->getOperandList(); // the first op is base pointer
+        rel_operation_gep_index_offset.add({rev_value_map[pRes], to_string(0), rev_value_map[op_list[1].get()]});
         Type * pIndexedType = pSrcTy;
         for (unsigned off_idx = 1; off_idx < num_indices; ++off_idx) {
-            Value *pOffset = op_list[off_idx].get();
+            Value *pOffset = op_list[1 + off_idx].get();
             if (auto *pStructTy = dyn_cast<llvm::StructType>(pIndexedType)) {
                 auto idx = (unsigned) cast<Constant>(pOffset)->getUniqueInteger().getZExtValue();
                 rel_operation_gep_index_field.add({rev_value_map[pRes], to_string(off_idx), to_string(idx)});

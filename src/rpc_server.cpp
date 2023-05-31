@@ -4,7 +4,7 @@
 
 #include <irmanager_instr.h>
 #include <instr_factory.h>
-//#include "instr_examples/reachableM.h"
+#include "instr_examples/reachableM.h"
 #include "instr_examples/ci_IM.h"
 #include "instr_examples/ci_Vval.h"
 #include <analysis/analysis.grpc.pb.h>
@@ -23,7 +23,7 @@ private:
     filesystem::path workpath;
 
 public:
-    inline static const string NAME = "llvm-codemanager";
+    inline static const string NAME = "llvmmanager";
 
     explicit LLVMProvider(const string& workdir) : workpath(workdir) {}
     ~LLVMProvider() override = default;
@@ -219,7 +219,7 @@ int main(int argc, char** argv) {
         usage();
         return -1;
     }
-
+    workdir = workdir + "/" + LLVMProvider::NAME;
     bool succ = filesystem::is_directory(workdir) || filesystem::create_directories(workdir);
     if (!succ) {
         cerr << "*** failed to create working directory " << workdir << endl;

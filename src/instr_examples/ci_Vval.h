@@ -19,7 +19,8 @@ namespace tea {
                 "    TEA_LOG(\"ci_Vval %u %d\\n\", tid, val);\n"
                 "}\n";
         llvm::FunctionCallee callee_ci_Vval;
-        std::map<unsigned, std::string> instr_itv_map;
+        std::map<unsigned, std::map<unsigned, std::string>> instr_id_itv_map; // multiple queries may query value of the same variable, we merge them into one
+        std::map<llvm::Value*, unsigned> instr_val_id_map;
     public:
         inline static const std::string NAME = "ci_Vval";
         inline static const RelInfo INFO = {
@@ -52,6 +53,14 @@ namespace tea {
             llvm::Value * pVal = irm->get_value(var_repr);
             assert(pVal != nullptr && "unknown value for ci_Vval");
 //            if (pVal == nullptr) return false;
+            if (instr_val_id_map.find(pVal) != instr_val_id_map.end()) {
+                unsigned actual_id = instr_val_id_map[pVal];
+                instr_id_itv_map[actual_id][instr_id] = itv_repr;
+                std::cout << "*** instr_ci_Vval: reuse instrumented #" << actual_id << " for #" << instr_id
+                        << " ci_Vval( " << var_repr
+                        << " , " << itv_repr << " )" << std::endl;
+                return true;
+            }
             if (auto *pValInst = llvm::dyn_cast<llvm::Instruction>(pVal)) {
                 // Note: only check phi results to reduce instrument sites
                 if (llvm::isa<llvm::PHINode>(pValInst) || llvm::isa<llvm::LoadInst>(pValInst)) {
@@ -69,7 +78,8 @@ namespace tea {
                     builder->CreateCall(callee_ci_Vval, {v_instr_id, pValInst});
 
                     // associate instr_id with abstract interval
-                    instr_itv_map.emplace(instr_id, itv_repr);
+                    instr_val_id_map[pVal] = instr_id;
+                    instr_id_itv_map[instr_id][instr_id] = itv_repr;
                     std::cout << "*** instr_ci_Vval: instrumented #" << instr_id << " ci_Vval( " << var_repr
                               << " , " << itv_repr << " )" << std::endl;
 
@@ -80,25 +90,28 @@ namespace tea {
             return false;
         }
 
-        std::pair<unsigned, bool> process(std::vector<int> &trace) override {
+        std::map<unsigned, bool> process(std::vector<int> &trace) override {
             assert(trace.size() == 2 && "mismatch trace length for ci_Vval");
-            unsigned instr_id = trace[0];
+            unsigned repr_id = trace[0];
             int value = trace[1];
-            const std::string &itv = instr_itv_map.at(instr_id);
-            if (itv.substr(0, 5) == "Itv:{") {
-                int v = stoi(itv.substr(5, itv.length() - 5 - 1));
-                bool sat = v == value;
-                return std::make_pair(instr_id, sat);
-            } else if (itv.substr(0, 5) == "Itv:[") {
-                unsigned comma_pos = itv.find(',');
-                int l = stoi(itv.substr(5, comma_pos - 5));
-                int r = stoi(itv.substr(comma_pos + 1, itv.length() - comma_pos - 1));
-                bool sat = l <= value && value <= r;
-                return std::make_pair(instr_id, sat);
-            } else {
-                assert(false && "malformed interval for ci_Vval");
+            std::map<unsigned, bool> res;
+            for (const auto & [instr_id, itv] : instr_id_itv_map[repr_id]) {
+                if (itv.substr(0, 5) == "Itv:{") {
+                    int v = stoi(itv.substr(5, itv.length() - 5 - 1));
+                    bool sat = v == value;
+                    res.try_emplace(instr_id, sat);
+                } else if (itv.substr(0, 5) == "Itv:[") {
+                    unsigned comma_pos = itv.find(',');
+                    int l = stoi(itv.substr(5, comma_pos - 5));
+                    int r = stoi(itv.substr(comma_pos + 1, itv.length() - comma_pos - 1));
+                    bool sat = l <= value && value <= r;
+                    res.try_emplace(instr_id, sat);
+                } else {
+                    assert(false && "malformed interval for ci_Vval");
 //                return std::make_pair(instr_id, false);
+                }
             }
+            return res;
         }
     };
     InstrFactoryInstance<Instr_ci_Vval> factory_ci_Vval;

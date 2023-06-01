@@ -59,10 +59,10 @@ namespace tea {
             return true;
         }
 
-        std::pair<unsigned, bool> process(std::vector<int> &trace) override {
+        std::map<unsigned, bool> process(std::vector<int> &trace) override {
             assert(trace.size() == 1 && "mismatch trace length for reachableM");
             unsigned instr_id = trace[0];
-            return std::make_pair(instr_id, true);
+            return std::map<unsigned , bool>{{instr_id, true}};
         }
     };
 

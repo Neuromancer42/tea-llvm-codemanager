@@ -62,11 +62,14 @@ void IRManager_Instr::handle_test_req(const vector<string>& args, vector<Tuple> 
     }
     std::filesystem::path outpath = workpath / ("test." + to_string(test_id) + ".out");
     std::filesystem::path errpath = workpath / ("test." + to_string(test_id) + ".err");
+    std::filesystem::path logpath = workpath / ("test." + to_string(test_id) + ".log");
     exe_oss << " >" << outpath << " 2>" << errpath;
     test_id++;
     system(exe_oss.str().c_str());
+    std::filesystem::rename(log_path, logpath);
+    
     ifstream trace_ifs;
-    trace_ifs.open(log_path);
+    trace_ifs.open(logpath);
     string trace_line;
     std::set<unsigned> triggered, negated;
     while (getline(trace_ifs, trace_line)) {
@@ -79,11 +82,13 @@ void IRManager_Instr::handle_test_req(const vector<string>& args, vector<Tuple> 
             trace.push_back(x);
         }
         if (instr_map.find(type) != instr_map.end()) {
-            auto res = instr_map[type]->process(trace);
-            if (res.second)
-                triggered.insert(res.first);
-            else
-                negated.insert(res.first);
+            auto res_map = instr_map[type]->process(trace);
+            for (const auto & [instr_id, res] : res_map) {
+                if (res)
+                    triggered.insert(instr_id);
+                else
+                    negated.insert(instr_id);
+            }
         } else {
             assert(false && "unknown instr type");
         }

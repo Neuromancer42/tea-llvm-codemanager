@@ -66,12 +66,12 @@ namespace tea {
             return false;
         }
 
-        std::pair<unsigned, bool> process(std::vector<int> &trace) override {
+        std::map<unsigned, bool> process(std::vector<int> &trace) override {
             assert(trace.size() == 2 && "mismatch trace length for ci_IM");
             unsigned instr_id = trace[0];
             bool call_edge_matched = trace[1];
             std::cout << "*** instr_ci_IM: " << ( call_edge_matched ? "triggered" : "negated") << " #" << instr_id << std::endl;
-            return std::make_pair(instr_id, call_edge_matched);
+            return std::map<unsigned, bool>{{instr_id, call_edge_matched}};
         }
     };
 

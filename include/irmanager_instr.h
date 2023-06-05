@@ -27,18 +27,18 @@ namespace tea {
         typedef std::pair<std::string, std::vector<std::string>> Tuple;
         static IRManager_Instr *
         createFromFile(const std::string &filename, llvm::SMDiagnostic &diag, llvm::LLVMContext &ctx,
-                       const std::string &workdir) {
+                       const std::string &workdir, const std::string& ldflags) {
             auto mod = llvm::parseIRFile(filename, diag, ctx);
             if (mod == nullptr) {
                 std::cerr << "IRManager: failed to read from " << filename << ":" << std::endl
                           << diag.getMessage().str() << std::endl;
                 return nullptr;
             }
-            return new IRManager_Instr(filename, std::move(mod), workdir);
+            return new IRManager_Instr(filename, std::move(mod), workdir, ldflags);
         }
 
-        IRManager_Instr(const std::string &name, std::unique_ptr<llvm::Module> mod, const std::string &workdir)
-            : IRManager(name, std::move(mod), workdir) {
+        IRManager_Instr(const std::string &name, std::unique_ptr<llvm::Module> mod, const std::string &workdir, const std::string & ldflags)
+            : IRManager(name, std::move(mod), workdir), ldflags(ldflags) {
             instr_code << "#include \"stdio.h\"\n";
             instr_code << "#define TEA_LOGFILE " << std::filesystem::absolute(log_path) << "\n";
             instr_code << "#define TEA_LOG(fstr, ...) \\\n"
@@ -98,6 +98,7 @@ namespace tea {
         void register_instr(const std::string & name, std::unique_ptr<AbstractInstr> instr);
 
     private:
+        std::string ldflags;
         void gen_instrumented_exe();
         bool compiled = false;
 

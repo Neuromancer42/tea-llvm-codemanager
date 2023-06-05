@@ -76,8 +76,13 @@ public:
                     cerr << "*** " << msg << endl;
                     response->set_msg("FAIL: " + msg);
                 } else {
+                    string ldflags;
+                    if (request->option().property().find("tea.source.cmd") != request->option().property().end()) {
+                        ldflags = request->option().property().at("tea.source.cmd");
+                        cout << "*** appending linker flags:" << ldflags << endl;
+                    }
                     map_manager[proj_id] = unique_ptr<IRManager_Instr>(
-                            IRManager_Instr::createFromFile(src_name, map_diag[proj_id], *map_ctx[proj_id], proj_path));
+                            IRManager_Instr::createFromFile(src_name, map_diag[proj_id], *map_ctx[proj_id], proj_path, ldflags));
                     auto &irm = map_manager[proj_id];
                     irm->build_doms();
                     irm->build_rels();
@@ -229,7 +234,7 @@ int main(int argc, char** argv) {
     }
     LLVMProvider provider(workdir);
 
-    string server_addr("localhost:" + server_port);
+    string server_addr("0.0.0.0:" + server_port);
     grpc::ServerBuilder builder;
     builder.AddListeningPort(server_addr, grpc::InsecureServerCredentials());
     builder.RegisterService(&provider);

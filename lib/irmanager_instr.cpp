@@ -43,9 +43,12 @@ void IRManager_Instr::gen_instrumented_exe() {
     // compile and link them
     std::ostringstream exe_oss;
     exe_oss << CLANG_EXE << " " << src_path << " " << instr_path;
-    // temporary workaround: add as many linker flags as necessary
-    exe_oss << " -lintl" << " -liconv" << " -lpcre";
+    // add linker flags if necessary
+    for (const auto& ldflag : ldflags) {
+        exe_oss << " " << ldflag;
+    }
     exe_oss << " -o " << exe_path;
+    cout << "*** compiling instrumented program: " << exe_oss.str() << endl;
     int rc = system(exe_oss.str().c_str());
     assert(rc == 0 && "compilation failed");
 }
@@ -63,11 +66,15 @@ void IRManager_Instr::handle_test_req(const vector<string>& args, vector<Tuple> 
     std::filesystem::path outpath = workpath / ("test." + to_string(test_id) + ".out");
     std::filesystem::path errpath = workpath / ("test." + to_string(test_id) + ".err");
     std::filesystem::path logpath = workpath / ("test." + to_string(test_id) + ".log");
+    if (std::filesystem::exists(log_path))
+        std::filesystem::remove(log_path);
     exe_oss << " >" << outpath << " 2>" << errpath;
     test_id++;
+    cout << "*** running test " << test_id <<  " for instrumented program: " << exe_oss.str() << endl;
     system(exe_oss.str().c_str());
     std::filesystem::rename(log_path, logpath);
-    
+
+    cout << "*** reading instr log: " << logpath << endl;
     ifstream trace_ifs;
     trace_ifs.open(logpath);
     string trace_line;

@@ -13,8 +13,13 @@ int main(int argc, char** argv) {
     }
     string filename(argv[1]);
     string workdir(argv[2]);
+    string ldflags;
+    for (int i = 3; i < argc; ++i) {
+        ldflags.append(" ").append(argv[i]);
+    }
     cout << "Parsing file: " << filename << endl;
     cout << "Setting workdir: " << workdir << endl;
+    cout << "linker flags:" << ldflags << endl;
     filesystem::create_directories(workdir);
 
     // parsing IR from file
@@ -22,7 +27,7 @@ int main(int argc, char** argv) {
     llvm::LLVMContext ctx;
     llvm::SMDiagnostic diag;
 
-    auto irm = unique_ptr<IRManager_Instr>(IRManager_Instr::createFromFile(filename, diag, ctx, workdir));
+    auto irm = unique_ptr<IRManager_Instr>(IRManager_Instr::createFromFile(filename, diag, ctx, workdir, ldflags));
 
     // get information from IR module
     cout << "Parsed module: " << irm->get_name() << endl;

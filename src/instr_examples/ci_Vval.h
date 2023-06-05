@@ -99,13 +99,15 @@ namespace tea {
                 if (itv.substr(0, 5) == "Itv:{") {
                     int v = stoi(itv.substr(5, itv.length() - 5 - 1));
                     bool sat = v == value;
-                    res.try_emplace(instr_id, sat);
+                    if (sat)
+                        res.try_emplace(instr_id, sat); // temporary workaround: do not negate ci_Vval
                 } else if (itv.substr(0, 5) == "Itv:[") {
                     unsigned comma_pos = itv.find(',');
                     int l = stoi(itv.substr(5, comma_pos - 5));
                     int r = stoi(itv.substr(comma_pos + 1, itv.length() - comma_pos - 1));
                     bool sat = l <= value && value <= r;
-                    res.try_emplace(instr_id, sat);
+                    if (sat)
+                        res.try_emplace(instr_id, sat); // temporary workaround: do not negate ci_Vval
                 } else {
                     assert(false && "malformed interval for ci_Vval");
 //                return std::make_pair(instr_id, false);

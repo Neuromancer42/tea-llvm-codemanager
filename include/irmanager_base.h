@@ -44,27 +44,31 @@ namespace tea {
 
         inline void build_doms() {
             collect_element_maps();
-            for (auto & rev_bb_pair : rev_bb_map)
-                dom_B.add(rev_bb_pair.second);
-            for (auto & rev_inst_pair : rev_inst_map)
-                dom_P.add(rev_inst_pair.second);
-            for (auto & rev_value_pair : rev_value_map)
-                dom_V.add(rev_value_pair.second);
-            for (auto & rev_type_pair : rev_type_map)
-                dom_T.add(rev_type_pair.second);
-            for (auto & rev_func_pair : rev_func_map)
-                dom_M.add(rev_func_pair.second);
+            for (const auto & [bb_str, _] : bb_map)
+                dom_B.add(bb_str);
+            for (const auto & [inst_str, _] : inst_map)
+                dom_P.add(inst_str);
+            for (const auto & [value_str, _] : value_map)
+                dom_V.add(value_str);
+            for (const auto & [type_str, _] : type_map)
+                dom_T.add(type_str);
+            for (const auto & [func_str, _] : func_map)
+                dom_M.add(func_str);
             for (unsigned z = 0; z <= max_z; ++z) {
                 dom_Z.add(std::to_string(z));
             }
+            std::set<std::string> consts;
             for (unsigned c : const_sizealign_set) {
-                dom_C.add(std::to_string(c));
+                consts.insert(std::to_string(c));
             }
-            for (auto & const_int_pair : rev_constint_map) {
-                dom_C.add(const_int_pair.second);
+            for (const auto & [_, constint_str] : rev_constint_map) {
+                consts.insert(constint_str);
             }
-            for (auto & const_fp_pair : rev_constfp_map) {
-                dom_C.add(const_fp_pair.second);
+            for (const auto & [_, constfp_str] : rev_constfp_map) {
+                consts.insert(constfp_str);
+            }
+            for (const auto & c : consts) {
+                dom_C.add(c);
             }
 //            ProgramDom dom_ORD{"ORD", "atomic orderings"};
 //            ProgramDom dom_AS {"AS", "address space"};

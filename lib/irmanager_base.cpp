@@ -238,7 +238,9 @@ void IRManager::collect_value(llvm::Value * pVal) {
         } else if (auto *pConstFP = dyn_cast<ConstantFP>(pVal)) {
             string const_str;
             raw_string_ostream raw_os(const_str);
-            pConstFP->getValue().print(raw_os);
+            SmallVector<char, 16> buffer;
+            pConstFP->getValue().toString(buffer);
+            raw_os << buffer;
             rev_constfp_map.emplace(pConstFP, const_str);
         } else if (auto *pStruct = dyn_cast<ConstantStruct>(pVal)) {
             unsigned num_fields = pStruct->getNumOperands();

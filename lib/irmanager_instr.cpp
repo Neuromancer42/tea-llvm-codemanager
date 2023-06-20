@@ -72,13 +72,17 @@ void IRManager_Instr::handle_test_req(const vector<string>& args, vector<Tuple> 
     test_id++;
     cout << "*** running test " << test_id <<  " for instrumented program: " << exe_oss.str() << endl;
     system(exe_oss.str().c_str());
-    std::filesystem::rename(log_path, logpath);
+    if (std::filesystem::exists(log_path))
+        std::filesystem::rename(log_path, logpath);
 
     cout << "*** reading instr log: " << logpath << endl;
-    ifstream trace_ifs;
-    trace_ifs.open(logpath);
-    string trace_line;
     std::set<unsigned> triggered, negated;
+    ifstream trace_ifs(logpath);
+    if (trace_ifs.fail()) {
+        cout << "*** no instr log found!" << endl;
+        return;
+    }
+    string trace_line;
     while (getline(trace_ifs, trace_line)) {
         istringstream trace_iss(trace_line);
         string type;

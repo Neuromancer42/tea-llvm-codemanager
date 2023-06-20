@@ -71,7 +71,11 @@ namespace tea {
             unsigned instr_id = trace[0];
             bool call_edge_matched = trace[1];
             std::cout << "*** instr_ci_IM: " << ( call_edge_matched ? "triggered" : "negated") << " #" << instr_id << std::endl;
-            return std::map<unsigned, bool>{{instr_id, call_edge_matched}};
+            std::map<unsigned,bool> res;
+            if (call_edge_matched) {
+                res.try_emplace(instr_id, call_edge_matched);
+            }
+            return res;
         }
     };
 

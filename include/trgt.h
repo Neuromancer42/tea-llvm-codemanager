@@ -48,6 +48,19 @@ namespace tea {
             return std::filesystem::absolute(outpath);
         }
 
+        void load(const std::filesystem::path& inpath) {
+            std::filesystem::path mappath = inpath / (name + ".map");
+            std::ifstream mapifs(mappath);
+            if (mapifs.fail()) {
+                std::cout << "*** no dom map file found! " << mappath << std::endl;
+                return;
+            }
+            std::string elem;
+            while (getline(mapifs, elem)) {
+                add(elem);
+            }
+        }
+
         void add(const std::string& elem) {
             assert(!elem.empty() && "empty element!");
 //            std::cout << "dom_" << name << ":\t" << elem << std::endl;
@@ -62,6 +75,10 @@ namespace tea {
         [[nodiscard]] unsigned index_of(const std::string& elem) const {
             unsigned id = elements.idFor(elem);
             return id;
+        }
+
+        [[nodiscard]] const std::string & get(int id) const {
+            return elements[id];
         }
     };
 

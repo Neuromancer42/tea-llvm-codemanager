@@ -37,11 +37,15 @@ namespace tea {
             return code;
         }
 
-        bool instrument(unsigned instr_id, const std::vector<std::string> &tuple) override {
+        bool instrument(unsigned instr_id, const std::vector<int> &tuple, const std::map<std::string, ProgramDom> &dom_map) override {
             assert(tuple.size() == 2 && "error attr size of ci_Vval");
 //            if (tuple.size() != 2) return false;
-            const std::string & invk_inst_repr = tuple[0];
-            const std::string & meth_repr = tuple[1];
+            assert(dom_map.find("P") != dom_map.end() && "no dom P");
+            const auto &domP = dom_map.find("P")->second;
+            assert(dom_map.find("M") != dom_map.end() && "no dom M");
+            const auto &domM = dom_map.find("M")->second;
+            const std::string & invk_inst_repr = domP.get(tuple[0]);
+            const std::string & meth_repr = domM.get(tuple[1]);
             //Type *ptr8Type = Type::getInt8PtrTy(M->getContext());
 
             llvm::Instruction * pInst = irm->get_instruction(invk_inst_repr);

@@ -40,11 +40,15 @@ namespace tea {
             return code;
         }
 
-        bool instrument(unsigned instr_id, const std::vector<std::string> &tuple) override {
+        bool instrument(unsigned instr_id, const std::vector<int> &tuple, const std::map<std::string, ProgramDom> &dom_map) override {
             assert(tuple.size() == 2 && "error attr size of ci_Vval");
             if (tuple.size() != 2) return false;
-            const std::string &var_repr = tuple[0];
-            const std::string &itv_repr = tuple[1];
+            assert(dom_map.find("V") != dom_map.end() && "no dom V");
+            const auto &domV = dom_map.find("V")->second;
+            assert(dom_map.find("U") != dom_map.end() && "no dom U");
+            const auto &domU = dom_map.find("U")->second;
+            const std::string &var_repr = domV.get(tuple[0]);
+            const std::string &itv_repr = domU.get(tuple[1]);
             if (itv_repr.substr(0, 5) != "Itv:{" && itv_repr.substr(0, 5) != "Itv:[") {
                 std::cout << "*** instr_ci_Vval: skip ci_Vval( " << var_repr << " , " << itv_repr << " )" << std::endl;
                 return false;

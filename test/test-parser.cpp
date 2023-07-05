@@ -57,23 +57,27 @@ int main(int argc, char** argv) {
         dom_M.push_back(m_str);
     }
     dom_M_ifs.close();
-    vector<pair<string, vector<string>>> queries;
-    for (auto & m : dom_M) {
-        if (m.find("main") != string::npos) {
-            cout << "skip " << m << endl;
+    vector<pair<string, vector<int>>> queries;
+    for (int m_id = 1; m_id <= dom_M.size(); ++m_id) {
+        if (dom_M[m_id-1].find("main") != string::npos) {
+            cout << "skip " << dom_M[m_id-1] << endl;
             continue;
         }
-        queries.emplace_back("reachableM", initializer_list<string>{m});
-        for (auto & p : dom_P) {
-            queries.emplace_back("ci_IM", initializer_list<string>{p, m});
+        queries.emplace_back("reachableM", initializer_list<int>{m_id});
+        for (int p_id = 1; p_id <= dom_P.size(); ++p_id) {
+            queries.emplace_back("ci_IM", initializer_list<int>{p_id, m_id});
         }
     }
     for (auto & instr_pair : InstrFactory::factory_map) {
         irm->register_instr(instr_pair.first, instr_pair.second->create(irm.get()));
         cout << "Registered instr: " << instr_pair.first << endl;
     }
+    map<string, ProgramDom> dom_map;
+    dom_map.emplace("P", "P").first->second.load(filesystem::path(workdir));
+    dom_map.emplace("M", "M").first->second.load(filesystem::path(workdir));
+
     for (auto & q : queries) {
-        bool succ = irm->handle_instrument_req(q.first, q.second);
+        bool succ = irm->handle_instrument_req(q.first, q.second, dom_map);
         if (succ) {
             cout << "instrumented:\t" << q.first;
             for (auto & e : q.second) {
@@ -82,7 +86,7 @@ int main(int argc, char** argv) {
             cout << endl;
         }
     }
-    vector<pair<string, vector<string>>> triggered, negated;
+    vector<pair<string, vector<int>>> triggered, negated;
     irm->handle_test_req({}, triggered, negated);
     for (auto & t : triggered) {
         cout << "triggered:\t" << t.first;

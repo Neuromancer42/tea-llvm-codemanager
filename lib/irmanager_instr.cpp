@@ -15,10 +15,10 @@ using namespace tea;
 using namespace std;
 using namespace llvm;
 
-bool IRManager_Instr::handle_instrument_req(const string & rel_name, const vector<string>& tuple) {
+bool IRManager_Instr::handle_instrument_req(const string & rel_name, const vector<int>& tuple, const map<string, ProgramDom>& dom_map) {
     bool succ = false;
     if (instr_map.find(rel_name) != instr_map.end())
-        succ = instr_map[rel_name]->instrument(instrumented_tuples.size(), tuple);
+        succ = instr_map[rel_name]->instrument(instrumented_tuples.size(), tuple, dom_map);
     if (succ)
         instrumented_tuples.emplace_back(rel_name, tuple);
     return succ;

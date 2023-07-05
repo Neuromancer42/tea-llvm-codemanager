@@ -123,14 +123,19 @@ public:
             cerr << "*** project " << proj_id << " never parsed before instrumenting" << endl;
         } else {
             auto & irm = map_manager[proj_id];
+            map<string, ProgramDom> dom_map;
+            for (auto & dom : request->dom()) {
+                string dom_name = dom.info().name();
+                dom_map.emplace(dom_name, string(dom_name)).first->second.load(dom.location());
+            }
             for (auto & tuple : request->instr_tuple()) {
                 string rel_name = tuple.rel_name();
-                vector<string> attrs(tuple.attribute().begin(), tuple.attribute().end());
-                bool succ = irm->handle_instrument_req(rel_name, attrs);
+                vector<int> attrs(tuple.attr_id().begin(), tuple.attr_id().end());
+                bool succ = irm->handle_instrument_req(rel_name, attrs, dom_map);
                 if (succ) {
                     auto * succ_tuple = response->add_succ_tuple();
                     succ_tuple->set_rel_name(rel_name);
-                    *succ_tuple->mutable_attribute() = {attrs.begin(), attrs.end()};
+                    *succ_tuple->mutable_attr_id() = {attrs.begin(), attrs.end()};
                 }
             }
         }
@@ -150,17 +155,17 @@ public:
             cerr << "*** project " << proj_id << " never parsed before testing" << endl;
         } else {
             vector<string> args(request->arg().begin(), request->arg().end());
-            vector<pair<string, vector<string>>> triggered, negated;
+            vector<pair<string, vector<int>>> triggered, negated;
             map_manager[proj_id]->handle_test_req(args, triggered, negated);
             for (auto & t : triggered) {
                 auto * tuple = response->add_triggered_tuple();
                 tuple->set_rel_name(t.first);
-                *tuple->mutable_attribute() = {t.second.begin(), t.second.end()};
+                *tuple->mutable_attr_id() = {t.second.begin(), t.second.end()};
             }
             for (auto & t : negated) {
                 auto * tuple = response->add_negated_tuple();
                 tuple->set_rel_name(t.first);
-                *tuple->mutable_attribute() = {t.second.begin(), t.second.end()};
+                *tuple->mutable_attr_id() = {t.second.begin(), t.second.end()};
             }
         }
         return grpc::Status::OK;

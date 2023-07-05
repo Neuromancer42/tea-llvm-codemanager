@@ -7,6 +7,7 @@
 
 #include "irmanager_base.h"
 #include <sstream>
+#include <utility>
 
 namespace tea {
     class IRManager_Instr;
@@ -17,14 +18,14 @@ namespace tea {
         explicit AbstractInstr(IRManager_Instr * pIRM) : irm(pIRM) {}
     public:
         virtual ~AbstractInstr() = default;
-        virtual bool instrument(unsigned instr_id, const std::vector<std::string>& tuple) = 0;
+        virtual bool instrument(unsigned instr_id, const std::vector<int>& tuple, const std::map<std::string, ProgramDom>& dom_map) = 0;
         virtual std::map<unsigned, bool> process(std::vector<int>& trace) = 0;
         virtual std::string gen_instr_code() = 0;
     };
 
     class IRManager_Instr : public IRManager {
     public:
-        typedef std::pair<std::string, std::vector<std::string>> Tuple;
+        typedef std::pair<std::string, std::vector<int>> Tuple;
         static IRManager_Instr *
         createFromFile(const std::string &filename, llvm::SMDiagnostic &diag, llvm::LLVMContext &ctx,
                        const std::string &workdir, const std::string& ldflags) {
@@ -37,8 +38,8 @@ namespace tea {
             return new IRManager_Instr(filename, std::move(mod), workdir, ldflags);
         }
 
-        IRManager_Instr(const std::string &name, std::unique_ptr<llvm::Module> mod, const std::string &workdir, const std::string & ldflags)
-            : IRManager(name, std::move(mod), workdir), ldflags(ldflags) {
+        IRManager_Instr(const std::string &name, std::unique_ptr<llvm::Module> mod, const std::string &workdir, std::string ldflags)
+            : IRManager(name, std::move(mod), workdir), ldflags(std::move(ldflags)) {
             instr_code << "#include \"stdio.h\"\n";
             instr_code << "#define TEA_LOGFILE " << std::filesystem::absolute(log_path) << "\n";
             instr_code << "#define TEA_LOG(fstr, ...) \\\n"
@@ -47,7 +48,7 @@ namespace tea {
                           "    fclose(tea_fp);  \n" << std::endl;
         }
 
-        bool handle_instrument_req(const std::string & rel_name, const std::vector<std::string>& tuple);
+        bool handle_instrument_req(const std::string & rel_name, const std::vector<int>& tuple, const std::map<std::string, ProgramDom>& dom_map);
 
         void handle_test_req(const std::vector<std::string> & args, std::vector<Tuple> & triggered_tuples, std::vector<Tuple> & negated_tuples);
 

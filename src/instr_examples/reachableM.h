@@ -38,11 +38,13 @@ namespace tea {
             return code;
         }
 
-        bool instrument(unsigned instr_id, const std::vector<std::string> &tuple) override {
+        bool instrument(unsigned instr_id, const std::vector<int> &tuple, const std::map<std::string, ProgramDom> &dom_map) override {
             assert(tuple.size() == 1 && "error attr size of reachableM");
             if (tuple.size() != 1) return false;
 
-            const std::string &meth_repr = tuple[0];
+            assert(dom_map.find("M") != dom_map.end() && "no dom M");
+            const auto& domM = dom_map.find("M")->second;
+            const std::string &meth_repr = domM.get(tuple[0]);
 
             llvm::Function *func = irm->get_function(meth_repr);
             assert(func != nullptr && "unknown function for reachableM");

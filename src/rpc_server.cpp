@@ -4,9 +4,9 @@
 
 #include <irmanager_instr.h>
 #include <instr_factory.h>
-#include "instr_examples/reachableM.h"
-#include "instr_examples/ci_IM.h"
-#include "instr_examples/ci_Vval.h"
+#include "instr_examples/reachableM.inc"
+#include "instr_examples/ci_IM.inc"
+#include "instr_examples/ci_Vval.inc"
 #include <analysis/analysis.grpc.pb.h>
 #include <google/protobuf/message.h>
 #include <grpcpp/server.h>

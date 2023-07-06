@@ -2,9 +2,9 @@
 #include <filesystem>
 #include "irmanager_instr.h"
 #include "instr_factory.h"
-#include "instr_examples/reachableM.h"
-#include "instr_examples/ci_IM.h"
-#include "instr_examples/ci_Vval.h"
+#include "instr_examples/reachableM.inc"
+#include "instr_examples/ci_IM.inc"
+#include "instr_examples/ci_Vval.inc"
 
 using namespace std;
 using namespace tea;

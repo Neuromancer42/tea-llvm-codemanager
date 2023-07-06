@@ -2,8 +2,8 @@
 // Created by Yifan Chen on 2023/5/8.
 //
 
-#ifndef TEA_LLVM_CODEMANAGER_REACHABLEM_H
-#define TEA_LLVM_CODEMANAGER_REACHABLEM_H
+#ifndef TEA_LLVM_CODEMANAGER_REACHABLEM_INC
+#define TEA_LLVM_CODEMANAGER_REACHABLEM_INC
 
 #include "instr_factory.h"
 #include <llvm/IR/IRBuilder.h>
@@ -71,4 +71,4 @@ namespace tea {
     InstrFactoryInstance<Instr_reachableM> factory_reachableM;
 }
 
-#endif //TEA_LLVM_CODEMANAGER_REACHABLEM_H
+#endif //TEA_LLVM_CODEMANAGER_REACHABLEM_INC

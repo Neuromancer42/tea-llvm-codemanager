@@ -2,8 +2,8 @@
 // Created by Yifan Chen on 2023/5/8.
 //
 
-#ifndef TEA_LLVM_CODEMANAGER_CI_VVAL_H
-#define TEA_LLVM_CODEMANAGER_CI_VVAL_H
+#ifndef TEA_LLVM_CODEMANAGER_CI_VVAL_INC
+#define TEA_LLVM_CODEMANAGER_CI_VVAL_INC
 
 #include "instr_factory.h"
 #include <llvm/IR/IRBuilder.h>
@@ -123,4 +123,4 @@ namespace tea {
     InstrFactoryInstance<Instr_ci_Vval> factory_ci_Vval;
 }
 
-#endif //TEA_LLVM_CODEMANAGER_CI_VVAL_H
+#endif //TEA_LLVM_CODEMANAGER_CI_VVAL_INC

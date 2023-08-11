@@ -22,6 +22,16 @@ namespace tea {
             : name(dom_name), description(dom_desc), elements()
             {}
 
+        ProgramDom(const ProgramDom&) = delete;
+
+        ProgramDom& operator=(const ProgramDom&) = delete;
+
+        ProgramDom(ProgramDom&&) = default;
+
+        ProgramDom& operator=(ProgramDom&&) = default;
+
+        ~ProgramDom() = default;
+
         [[nodiscard]] const std::string& get_name() const {
             return name;
         }
@@ -94,6 +104,16 @@ namespace tea {
         ProgramRel(std::string&& rel_name, std::array<const ProgramDom*, N>&& doms, std::string && desc = "")
             : name(rel_name), domains(doms), description(desc), tuples()
             {}
+
+        ProgramRel(const ProgramRel&) = delete;
+
+        ProgramRel& operator=(const ProgramRel&) = delete;
+
+        ProgramRel(ProgramRel&&) = default;
+
+        ProgramRel& operator=(ProgramRel&&) = default;
+
+        ~ProgramRel() = default;
 
         [[nodiscard]] const std::string& get_name() const {
             return name;

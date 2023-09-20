@@ -19,8 +19,11 @@ namespace tea {
                 "    TEA_LOG(\"ci_Vval %u %d\\n\", tid, val);\n"
                 "}\n";
         llvm::FunctionCallee callee_ci_Vval;
+        
         std::map<unsigned, std::map<unsigned, std::string>> instr_id_itv_map; // multiple queries may query value of the same variable, we merge them into one
         std::map<llvm::Value*, unsigned> instr_val_id_map;
+        std::map<unsigned, unsigned> match_count;
+        
     public:
         inline static const std::string NAME = "ci_Vval";
         inline static const RelInfo INFO = {
@@ -94,27 +97,34 @@ namespace tea {
             return false;
         }
 
-        std::map<unsigned, bool> process(std::vector<int> &trace) override {
+        void process(std::vector<int> &trace) override {
             assert(trace.size() == 2 && "mismatch trace length for ci_Vval");
             unsigned repr_id = trace[0];
             int value = trace[1];
-            std::map<unsigned, bool> res;
             for (const auto & [instr_id, itv] : instr_id_itv_map[repr_id]) {
                 if (itv.substr(0, 5) == "Itv:{") {
                     int v = stoi(itv.substr(5, itv.length() - 5 - 1));
-                    bool sat = v == value;
-//                    if (sat)    // temporary workaround: do not negate ci_Vval
-                    res.try_emplace(instr_id, sat);
+                    if (v == value)
+                        match_count[instr_id]++;
                 } else if (itv.substr(0, 5) == "Itv:[") {
                     unsigned comma_pos = itv.find(',');
                     int l = stoi(itv.substr(5, comma_pos - 5));
                     int r = stoi(itv.substr(comma_pos + 1, itv.length() - comma_pos - 1));
-                    bool sat = l <= value && value <= r;
-//                    if (sat)    // temporary workaround: do not negate ci_Vval
-                    res.try_emplace(instr_id, sat);
+                    if (l <= value && value <= r)
+                        match_count[instr_id]++;
                 } else {
                     assert(false && "malformed interval for ci_Vval");
 //                return std::make_pair(instr_id, false);
+                }
+            }
+        }
+
+        std::map<unsigned, bool> collect() override {
+            std::map<unsigned, bool> res;
+            for (const auto & instr_id_map_entry : instr_id_itv_map) {
+                for (const auto & instr_id_pair : instr_id_map_entry.second) {
+                    unsigned instr_id = instr_id_pair.first;
+                    res[instr_id] = match_count.find(instr_id) != match_count.end() && match_count[instr_id] > 0;
                 }
             }
             return res;

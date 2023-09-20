@@ -20,6 +20,10 @@ namespace tea {
                 "    TEA_LOG(\"ci_IM %u %d\\n\", tid, match);\n"
                 "}\n";
         llvm::FunctionCallee callee_ci_IM;
+        
+        std::map<unsigned, unsigned> match_count;
+        std::map<unsigned, unsigned> mismatch_count;
+        
     public:
         inline static const std::string NAME = "ci_IM";
         inline static const RelInfo INFO = {{"P", "M"}, "ci_IM(i:P,m:M):check dynamic calls"};
@@ -70,14 +74,30 @@ namespace tea {
             return false;
         }
 
-        std::map<unsigned, bool> process(std::vector<int> &trace) override {
+        void process(std::vector<int> &trace) override {
             assert(trace.size() == 2 && "mismatch trace length for ci_IM");
             unsigned instr_id = trace[0];
             bool call_edge_matched = trace[1];
             std::cout << "*** instr_ci_IM: " << ( call_edge_matched ? "triggered" : "negated") << " #" << instr_id << std::endl;
+            if (call_edge_matched)
+                match_count[instr_id]++;
+            else
+                mismatch_count[instr_id]++;
+        }
+        
+        std::map<unsigned, bool> collect() override {
             std::map<unsigned,bool> res;
-//            if (call_edge_matched)    // temporary workaround: do not negate
-            res.try_emplace(instr_id, call_edge_matched);
+            for (const auto & mismatch_pair : mismatch_count) {
+                if (mismatch_pair.second > 0) {
+                    res[mismatch_pair.first] = false;
+                }
+            }
+            for (const auto & match_pair : match_count) {
+                if (match_pair.second > 0) {
+                    // note: this will overwrite previous mismatch records
+                    res[match_pair.first] = true;
+                }
+            }
             return res;
         }
     };

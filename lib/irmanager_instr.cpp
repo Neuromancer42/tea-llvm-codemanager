@@ -93,15 +93,18 @@ void IRManager_Instr::handle_test_req(const vector<string>& args, vector<Tuple> 
             trace.push_back(x);
         }
         if (instr_map.find(type) != instr_map.end()) {
-            auto res_map = instr_map[type]->process(trace);
-            for (const auto & [instr_id, res] : res_map) {
-                if (res)
-                    triggered.insert(instr_id);
-                else
-                    negated.insert(instr_id);
-            }
+            instr_map[type]->process(trace);
         } else {
             assert(false && "unknown instr type");
+        }
+    }
+    for (const auto & instr_pair : instr_map) {
+        auto res_map = instr_pair.second->collect();
+        for (const auto & [instr_id, res] : res_map) {
+            if (res)
+                triggered.insert(instr_id);
+            else
+                negated.insert(instr_id);
         }
     }
     for (unsigned i = 0; i < instrumented_tuples.size(); ++i) {

@@ -20,6 +20,9 @@ namespace tea {
                 "}\n";
         llvm::FunctionCallee callee_reachableM;
 
+        std::set<unsigned> reach_instr_set;
+        std::map<unsigned, unsigned> reach_count;
+
     public:
         inline static const std::string NAME = "reachableM";
         inline static const RelInfo INFO = {{"M"}, "reachableM(m:M):mark reachable methods"};
@@ -57,14 +60,25 @@ namespace tea {
 
             llvm::Value *v_instr_id = llvm::ConstantInt::get(intType, instr_id);
             builder.CreateCall(callee_reachableM, {v_instr_id});
+            
+            reach_instr_set.insert(instr_id);
 
             return true;
         }
 
-        std::map<unsigned, bool> process(std::vector<int> &trace) override {
+        void process(std::vector<int> &trace) override {
             assert(trace.size() == 1 && "mismatch trace length for reachableM");
             unsigned instr_id = trace[0];
-            return std::map<unsigned , bool>{{instr_id, true}};
+            
+            reach_count[instr_id]++;
+        }
+
+        std::map<unsigned, bool> collect() override {
+            std::map<unsigned, bool> res_map;
+            for (const auto & instr_id : reach_instr_set) {
+                res_map[instr_id] = reach_count.find(instr_id) != reach_count.end() && reach_count[instr_id] > 0;
+            }
+            return res_map;
         }
     };
 

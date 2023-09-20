@@ -19,7 +19,8 @@ namespace tea {
     public:
         virtual ~AbstractInstr() = default;
         virtual bool instrument(unsigned instr_id, const std::vector<int>& tuple, const std::map<std::string, ProgramDom>& dom_map) = 0;
-        virtual std::map<unsigned, bool> process(std::vector<int>& trace) = 0;
+        virtual void process(std::vector<int>& trace) = 0;
+        virtual std::map<unsigned, bool> collect() = 0;
         virtual std::string gen_instr_code() = 0;
     };
 

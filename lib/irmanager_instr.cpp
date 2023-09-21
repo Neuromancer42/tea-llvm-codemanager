@@ -24,9 +24,26 @@ bool IRManager_Instr::handle_instrument_req(const string & rel_name, const vecto
     return succ;
 }
 
-void IRManager_Instr::gen_instrumented_exe() {
+void IRManager_Instr::prepare_test_env(const std::string &content_dir) {
+    // create environment
+    std::filesystem::path content_path = content_dir;
+    if (filesystem::is_directory(content_path)) {
+        filesystem::copy(content_path, test_path, 
+                         std::filesystem::copy_options::recursive | 
+                         std::filesystem::copy_options::update_existing);
+    } else {
+        cerr << "*** test contents directory does not exist" << content_dir << endl;
+    }
+    bool succ = filesystem::is_directory(test_path) || filesystem::create_directories(test_path);
+    if (!succ) {
+        cerr << "*** failed to create testing directory " << test_path << endl;
+        return;
+    } else {
+        clog << "*** prepare testing environment in " << filesystem::absolute(test_path) << endl;
+    }
+    
     // dump instrumented code
-    std::filesystem::path src_path = workpath / "instrumented.ll";
+    std::filesystem::path src_path = test_path / "instrumented.ll";
     string outstring;
     raw_string_ostream os(outstring);
     ofstream outfile;
@@ -35,46 +52,43 @@ void IRManager_Instr::gen_instrumented_exe() {
     outfile << outstring;
     outfile.close();
     // dump auxiliary instrument functions
-    std::filesystem::path instr_path = workpath / "instr_funcs.c";
+    std::filesystem::path instr_path = test_path / "instr_funcs.c";
     ofstream instrfile;
     instrfile.open(instr_path);
     instrfile << instr_code.str();
     instrfile.close();
-    // compile and link them
-    std::ostringstream exe_oss;
-    exe_oss << CLANG_EXE << " " << src_path << " " << instr_path;
-    // add linker flags if necessary
-    for (const auto& ldflag : ldflags) {
-        exe_oss << " " << ldflag;
-    }
-    exe_oss << " -o " << exe_path;
-    cout << "*** compiling instrumented program: " << exe_oss.str() << endl;
-    int rc = system(exe_oss.str().c_str());
-    assert(rc == 0 && "compilation failed");
+//    // compile and link them
+//    std::filesystem::path obj_path = test_path / "instrumented.o";
+//    std::ostringstream exe_oss;
+//    exe_oss << CLANG_EXE << " " << src_path << " " << instr_path;
+//    // add linker flags if necessary
+//    for (const auto& ldflag : ldflags) {
+//        exe_oss << " " << ldflag;
+//    }
+//    exe_oss << " -o " << obj_path;
+//    cout << "*** compiling instrumented program: " << exe_oss.str() << endl;
+//    int rc = system(exe_oss.str().c_str());
+//    assert(rc == 0 && "compilation failed");
 }
 
-void IRManager_Instr::handle_test_req(const vector<string>& args, vector<Tuple> & triggered_tuples, vector<Tuple> & negated_tuples){
-    if (!compiled) {
-        gen_instrumented_exe();
-        compiled = true;
-    }
+void IRManager_Instr::run_test(const std::vector<std::string> & test_ids, const std::vector<std::string> &append_args) {
     std::ostringstream exe_oss;
-    exe_oss << exe_path;
-    for (auto & arg : args) {
+    exe_oss << "make";
+    for (const auto & test_id : test_ids) {
+        exe_oss << " " << test_id;
+    }
+    for (const auto & arg : append_args) {
         exe_oss << " " << arg;
     }
-    std::filesystem::path outpath = workpath / ("test." + to_string(test_id) + ".out");
-    std::filesystem::path errpath = workpath / ("test." + to_string(test_id) + ".err");
-    std::filesystem::path logpath = workpath / ("test." + to_string(test_id) + ".log");
-    if (std::filesystem::exists(log_path))
-        std::filesystem::remove(log_path);
-    exe_oss << " >" << outpath << " 2>" << errpath;
-    test_id++;
-    cout << "*** running test " << test_id <<  " for instrumented program: " << exe_oss.str() << endl;
+    exe_oss << " -C " << filesystem::absolute(test_path);
+    exe_oss << " -i"; // ignore errors in case some of the tests failed
+    cout << "*** running tests: " << exe_oss.str() << endl;
     system(exe_oss.str().c_str());
-    if (std::filesystem::exists(log_path))
-        std::filesystem::rename(log_path, logpath);
+}
 
+void IRManager_Instr::collect_test_results(const std::string &test_id, std::vector<Tuple> &triggered_tuples,
+                                           std::vector<Tuple> &negated_tuples) {
+    std::filesystem::path logpath = test_path / ("tea." + test_id + ".log");
     cout << "*** reading instr log: " << logpath << endl;
     std::set<unsigned> triggered, negated;
     ifstream trace_ifs(logpath);

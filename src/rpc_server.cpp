@@ -76,13 +76,13 @@ public:
                     cerr << "*** " << msg << endl;
                     response->set_msg("FAIL: " + msg);
                 } else {
-                    string ldflags;
-                    if (request->option().property().find("tea.source.cmd") != request->option().property().end()) {
-                        ldflags = request->option().property().at("tea.source.cmd");
-                        cout << "*** appending linker flags:" << ldflags << endl;
-                    }
+//                    string ldflags;
+//                    if (request->option().property().find("tea.source.cmd") != request->option().property().end()) {
+//                        ldflags = request->option().property().at("tea.source.cmd");
+//                        cout << "*** appending linker flags:" << ldflags << endl;
+//                    }
                     map_manager[proj_id] = unique_ptr<IRManager_Instr>(
-                            IRManager_Instr::createFromFile(src_name, map_diag[proj_id], *map_ctx[proj_id], proj_path, ldflags));
+                            IRManager_Instr::createFromFile(src_name, map_diag[proj_id], *map_ctx[proj_id], proj_path));
                     auto &irm = map_manager[proj_id];
                     irm->build_doms();
                     irm->build_rels();
@@ -148,24 +148,39 @@ public:
     }
 
     grpc::Status Test(::grpc::ServerContext *context, const analysis::TestRequest *request,
-                      analysis::TestResponse *response) override {
+                      ::grpc::ServerWriter<::tea::analysis::TestResponse> *writer) override {
         clog << "*** processing Test request: " << request->ShortDebugString() << endl;
         const string &proj_id = request->project_id();
         if (map_manager.find(proj_id) == map_manager.end()) {
             cerr << "*** project " << proj_id << " never parsed before testing" << endl;
         } else {
-            vector<string> args(request->arg().begin(), request->arg().end());
-            vector<pair<string, vector<int>>> triggered, negated;
-            map_manager[proj_id]->handle_test_req(args, triggered, negated);
-            for (auto & t : triggered) {
-                auto * tuple = response->add_triggered_tuple();
-                tuple->set_rel_name(t.first);
-                *tuple->mutable_attr_id() = {t.second.begin(), t.second.end()};
+            map_manager[proj_id]->prepare_test_env(request->test_dir());
+            vector<string> test_ids(request->test_id().begin(), request->test_id().end());
+            vector<string> append_args;
+            for (const auto & test_entry : request->option().property()) {
+                const auto & key = test_entry.first;
+                if (key.find("tea.test.make") == 0) {
+                    append_args.push_back(test_entry.second);
+                }
             }
-            for (auto & t : negated) {
-                auto * tuple = response->add_negated_tuple();
-                tuple->set_rel_name(t.first);
-                *tuple->mutable_attr_id() = {t.second.begin(), t.second.end()};
+            map_manager[proj_id]->run_test(test_ids, append_args);
+            for (const auto & test_id : test_ids) {
+                vector<pair<string, vector<int>>> triggered, negated;
+                map_manager[proj_id]->collect_test_results(test_id, triggered, negated);
+                
+                analysis::TestResponse resp;
+                resp.set_test_id(test_id);
+                for (auto &t: triggered) {
+                    auto *tuple = resp.add_triggered_tuple();
+                    tuple->set_rel_name(t.first);
+                    *tuple->mutable_attr_id() = {t.second.begin(), t.second.end()};
+                }
+                for (auto &t: negated) {
+                    auto *tuple = resp.add_negated_tuple();
+                    tuple->set_rel_name(t.first);
+                    *tuple->mutable_attr_id() = {t.second.begin(), t.second.end()};
+                }
+                writer->Write(resp);
             }
         }
         return grpc::Status::OK;

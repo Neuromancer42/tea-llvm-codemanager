@@ -29,29 +29,35 @@ namespace tea {
         typedef std::pair<std::string, std::vector<int>> Tuple;
         static IRManager_Instr *
         createFromFile(const std::string &filename, llvm::SMDiagnostic &diag, llvm::LLVMContext &ctx,
-                       const std::string &workdir, const std::string& ldflags) {
+                       const std::string &workdir) {
             auto mod = llvm::parseIRFile(filename, diag, ctx);
             if (mod == nullptr) {
                 std::cerr << "IRManager: failed to read from " << filename << ":" << std::endl
                           << diag.getMessage().str() << std::endl;
                 return nullptr;
             }
-            return new IRManager_Instr(filename, std::move(mod), workdir, ldflags);
+            return new IRManager_Instr(filename, std::move(mod), workdir);
         }
 
-        IRManager_Instr(const std::string &name, std::unique_ptr<llvm::Module> mod, const std::string &workdir, std::string ldflags)
-            : IRManager(name, std::move(mod), workdir), ldflags(std::move(ldflags)) {
+        IRManager_Instr(const std::string &name, std::unique_ptr<llvm::Module> mod, const std::string &workdir)
+            : IRManager(name, std::move(mod), workdir) {
             instr_code << "#include \"stdio.h\"\n";
-            instr_code << "#define TEA_LOGFILE " << std::filesystem::absolute(log_path) << "\n";
+            instr_code << "#define TEA_LOGFILE " << std::filesystem::path(log_file) << "\n";
             instr_code << "#define TEA_LOG(fstr, ...) \\\n"
-                          "    FILE * tea_fp = fopen(TEA_LOGFILE, \"a+\"); \\\n"
+                          "    if (tea_fp == NULL) tea_fp = fopen(TEA_LOGFILE, \"w\"); \\\n"
+                          "    else tea_fp = fopen(TEA_LOGFILE, \"a\"); \\\n"
                           "    fprintf(tea_fp, fstr, __VA_ARGS__);       \\\n"
                           "    fclose(tea_fp);  \n" << std::endl;
+            instr_code << "static FILE * tea_fp = NULL;\n" << std::endl;
         }
 
         bool handle_instrument_req(const std::string & rel_name, const std::vector<int>& tuple, const std::map<std::string, ProgramDom>& dom_map);
 
-        void handle_test_req(const std::vector<std::string> & args, std::vector<Tuple> & triggered_tuples, std::vector<Tuple> & negated_tuples);
+        void prepare_test_env(const std::string & content_dir);
+        
+        void run_test(const std::vector<std::string> & test_id, const std::vector<std::string> & append_args);
+        
+        void collect_test_results(const std::string & test_id, std::vector<Tuple> & triggered_tuples, std::vector<Tuple> & negated_tuples);
 
         inline llvm::Module * get_module() {
             return module.get();
@@ -100,16 +106,13 @@ namespace tea {
         void register_instr(const std::string & name, std::unique_ptr<AbstractInstr> instr);
 
     private:
-        std::string ldflags;
-        void gen_instrumented_exe();
-        bool compiled = false;
 
         std::vector<Tuple> instrumented_tuples;
         std::map<std::string, std::unique_ptr<AbstractInstr>> instr_map;
         std::stringstream instr_code;
-        std::filesystem::path exe_path = workpath / "instrumented";
-        std::filesystem::path log_path = workpath / "tea_log.txt";
-        size_t test_id = 0;
+        std::filesystem::path test_path = workpath / "tea_test";
+        std::string log_file = "tea.log";
+//        std::filesystem::path log_path = workpath / log_file;
     };
 
 }

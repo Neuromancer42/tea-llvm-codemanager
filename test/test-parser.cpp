@@ -7,19 +7,24 @@
 using namespace std;
 using namespace tea;
 int main(int argc, char** argv) {
-    if (argc < 3) {
-        cerr << "Usage: " << argv[0] << " <bitcode file>" << " <workdir>" << endl;
+    if (argc < 4) {
+        cerr << "Usage: " << argv[0] << " <bitcode file>" << " <workdir>" << " <testdir>" << endl;
         return 1;
     }
     string filename(argv[1]);
     string workdir(argv[2]);
-    string ldflags;
-    for (int i = 3; i < argc; ++i) {
-        ldflags.append(" ").append(argv[i]);
-    }
+    string testdir(argv[3]);
     cout << "Parsing file: " << filename << endl;
     cout << "Setting workdir: " << workdir << endl;
-    cout << "linker flags:" << ldflags << endl;
+    cout << "Append args:";
+
+    vector<string> make_args;
+    vector<string> append_args;
+    for (int i = 4; i < argc; ++i) {
+        make_args.push_back(argv[i]);
+        cout << " " << make_args.back();
+    }
+    cout << endl;
     filesystem::create_directories(workdir);
 
     // parsing IR from file
@@ -27,7 +32,7 @@ int main(int argc, char** argv) {
     llvm::LLVMContext ctx;
     llvm::SMDiagnostic diag;
 
-    auto irm = unique_ptr<IRManager_Instr>(IRManager_Instr::createFromFile(filename, diag, ctx, workdir, ldflags));
+    auto irm = unique_ptr<IRManager_Instr>(IRManager_Instr::createFromFile(filename, diag, ctx, workdir));
 
     // get information from IR module
     cout << "Parsed module: " << irm->get_name() << endl;
@@ -86,21 +91,25 @@ int main(int argc, char** argv) {
             cout << endl;
         }
     }
-    vector<pair<string, vector<int>>> triggered, negated;
-    irm->handle_test_req({}, triggered, negated);
-    for (auto & t : triggered) {
-        cout << "triggered:\t" << t.first;
-        for (auto & e : t.second) {
-            cout << "\t" << e;
+    irm->prepare_test_env(testdir);
+    irm->run_test(make_args, append_args);
+    for (const auto & id : make_args) {
+        vector<pair<string, vector<int>>> triggered, negated;
+        irm->collect_test_results(id, triggered, negated);
+        for (auto &t: triggered) {
+            cout << "triggered:\t" << t.first;
+            for (auto &e: t.second) {
+                cout << "\t" << e;
+            }
+            cout << endl;
         }
-        cout << endl;
-    }
-    for (auto & t : negated) {
-        cout << "negated:\t" << t.first;
-        for (auto & e : t.second) {
-            cout << "\t" << e;
+        for (auto &t: negated) {
+            cout << "negated:\t" << t.first;
+            for (auto &e: t.second) {
+                cout << "\t" << e;
+            }
+            cout << endl;
         }
-        cout << endl;
     }
     return 0;
 }

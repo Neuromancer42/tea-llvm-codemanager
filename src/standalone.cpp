@@ -9,19 +9,23 @@
 using namespace std;
 using namespace tea;
 int main(int argc, char** argv) {
-    if (argc < 3) {
-        cerr << "Usage: " << argv[0] << " <bitcode file> <workdir>" << endl;
+    if (argc < 4) {
+        cerr << "Usage: " << argv[0] << " <bitcode file> <workdir> <testdir> [<test_ids>]" << endl;
         return 1;
     }
     string filename(argv[1]);
     string workdir(argv[2]);
-    string ldflags;
-    for (int i = 3; i < argc; ++i) {
-        ldflags.append(" ").append(argv[i]);
-    }
+    string testdir(argv[3]);
+    vector<string> test_ids;
+    vector<string> append_args;
     cout << "Parsing file: " << filename << endl;
     cout << "Setting workdir: " << workdir << endl;
-    cout << "linker flags:" << ldflags << endl;
+    cout << "Make args:";
+    for (int i = 4; i < argc; ++i) {
+        test_ids.emplace_back(argv[i]);
+        cout << " " << test_ids.back();
+    }
+    cout << endl;
     filesystem::create_directories(workdir);
 
     // parsing IR from file
@@ -60,7 +64,7 @@ int main(int argc, char** argv) {
     llvm::LLVMContext ctx;
     llvm::SMDiagnostic diag;
 
-    auto irm = unique_ptr<IRManager_Instr>(IRManager_Instr::createFromFile(filename, diag, ctx, workdir, ldflags));
+    auto irm = unique_ptr<IRManager_Instr>(IRManager_Instr::createFromFile(filename, diag, ctx, workdir));
     irm->build_doms();
     irm->build_rels();
     cout << "Parsed module: " << irm->get_name() << endl;
@@ -81,9 +85,13 @@ int main(int argc, char** argv) {
         cout << "Registered instr: " << instr_pair.first << endl;
     }
     cout << "Run tests: " << endl;
-    std::vector<IRManager_Instr::Tuple> triggered, negated;
-    irm->handle_test_req(vector<std::string>{"1"}, triggered, negated);
-    cout << "Triggered: " << triggered.size() << endl;
-    cout << "Negated: " << negated.size() << endl;
+    irm->prepare_test_env(testdir);
+    irm->run_test(test_ids, append_args);
+    for (const auto & test_id : test_ids) {
+        std::vector<IRManager_Instr::Tuple> triggered, negated;
+        irm->collect_test_results(test_id, triggered, negated);
+        cout << "Triggered: " << triggered.size() << endl;
+        cout << "Negated: " << negated.size() << endl;
+    }
     return 0;
 }

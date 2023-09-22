@@ -74,9 +74,11 @@ void IRManager_Instr::prepare_test_env(const std::string &content_dir) {
 void IRManager_Instr::run_test(const std::vector<std::string> & test_ids, const std::vector<std::string> &append_args) {
     std::ostringstream exe_oss;
     exe_oss << "make";
+    exe_oss << " TEST_IDS=\"";
     for (const auto & test_id : test_ids) {
         exe_oss << " " << test_id;
     }
+    exe_oss << "\" test";
     for (const auto & arg : append_args) {
         exe_oss << " " << arg;
     }

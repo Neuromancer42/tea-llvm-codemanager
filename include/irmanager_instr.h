@@ -112,6 +112,9 @@ namespace tea {
         std::stringstream instr_code;
         std::filesystem::path test_path = workpath / "tea_test";
         std::string log_file = "tea.log";
+        std::string instr_code_file = "instrumented.ll";
+        std::string instr_func_file = "instr_funcs.c";
+        std::string instr_make_file = "tea.Makefile";
 //        std::filesystem::path log_path = workpath / log_file;
     };
 

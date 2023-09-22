@@ -1,6 +1,7 @@
 CLANG := clang
-gzip: instrumented.ll instr_funcs.c
-	${CLANG} $+ -o $@
+SRC := gzip-1.2.4a.ll
+gzip: $(SRC)
+	$(CLANG) $+ -o $@
 	
 TEST_IDS := test-help
 .PHONY: test $(TEST_IDS)

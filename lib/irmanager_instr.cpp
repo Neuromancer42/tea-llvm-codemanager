@@ -43,7 +43,7 @@ void IRManager_Instr::prepare_test_env(const std::string &content_dir) {
     }
     
     // dump instrumented code
-    std::filesystem::path src_path = test_path / "instrumented.ll";
+    std::filesystem::path src_path = test_path / instr_code_file;
     string outstring;
     raw_string_ostream os(outstring);
     ofstream outfile;
@@ -52,7 +52,7 @@ void IRManager_Instr::prepare_test_env(const std::string &content_dir) {
     outfile << outstring;
     outfile.close();
     // dump auxiliary instrument functions
-    std::filesystem::path instr_path = test_path / "instr_funcs.c";
+    std::filesystem::path instr_path = test_path / instr_func_file;
     ofstream instrfile;
     instrfile.open(instr_path);
     instrfile << instr_code.str();
@@ -74,6 +74,7 @@ void IRManager_Instr::prepare_test_env(const std::string &content_dir) {
 void IRManager_Instr::run_test(const std::vector<std::string> & test_ids, const std::vector<std::string> &append_args) {
     std::ostringstream exe_oss;
     exe_oss << "make";
+    exe_oss << " SRC=\"" << instr_code_file << " " << instr_func_file << "\"";
     exe_oss << " TEST_IDS=\"";
     for (const auto & test_id : test_ids) {
         exe_oss << " " << test_id;
@@ -84,6 +85,8 @@ void IRManager_Instr::run_test(const std::vector<std::string> & test_ids, const 
     }
     exe_oss << " -C " << filesystem::absolute(test_path);
     exe_oss << " -i"; // ignore errors in case some of the tests failed
+    exe_oss << " -B"; // force re-build and re-run
+    exe_oss << " -f " << instr_make_file;
     cout << "*** running tests: " << exe_oss.str() << endl;
     system(exe_oss.str().c_str());
 }
